@@ -4,10 +4,13 @@ RAG (Retrieval-Augmented Generation) service
 from typing import List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import logging
 
 from app.models.session import Session, Message
 from app.services.embedding_service import embedding_service
 from app.services.llm_service import llm_service
+
+logger = logging.getLogger(__name__)
 
 
 class RAGService:
@@ -124,11 +127,44 @@ class RAGService:
             session_summary=session_summary
         )
         
-        # Extract concepts
+        # Extract concepts (with improved fallback)
+        concepts = []
         try:
             concepts = await llm_service.extract_concepts(response)
-        except Exception:
-            concepts = []
+            logger.info(f"LLM extracted {len(concepts)} concepts: {concepts}")
+        except Exception as e:
+            logger.warning(f"LLM concept extraction failed: {e}, using fallback")
+            # Fallback: extract keywords from question and response
+            import re
+            
+            # Combine question and response
+            text = question + " " + response[:1000]
+            
+            # Extract multi-word capitalized phrases (e.g., "Machine Learning", "Neural Networks")
+            multi_word = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', text)
+            
+            # Extract single capitalized words (but filter common words)
+            single_word = re.findall(r'\b[A-Z][a-z]{2,}\b', text)
+            
+            # Common words to exclude
+            exclude = {'The', 'This', 'That', 'These', 'Those', 'What', 'When', 'Where', 'Why', 'How', 
+                      'Which', 'Who', 'Explain', 'Define', 'Describe', 'Tell', 'Give', 'Show', 'True', 'False'}
+            
+            # Combine and filter
+            all_concepts = multi_word + [w for w in single_word if w not in exclude]
+            
+            # Get unique concepts, limit to 8
+            concepts = list(dict.fromkeys(all_concepts))[:8]
+            
+            logger.info(f"Fallback extracted {len(concepts)} concepts: {concepts}")
+            
+            # If still no concepts, create one from the question
+            if not concepts and question:
+                # Extract nouns from question as a last resort
+                words = question.split()
+                concepts = [w.capitalize() for w in words if len(w) > 4 and w.lower() not in 
+                          {'what', 'explain', 'describe', 'about', 'tell', 'give', 'show'}][:3]
+                logger.info(f"Last resort extracted {len(concepts)} concepts from question: {concepts}")
         
         return response, response, sources, concepts
     

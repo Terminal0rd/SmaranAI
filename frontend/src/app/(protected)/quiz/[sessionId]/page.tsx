@@ -84,6 +84,28 @@ export default function QuizPage() {
                 <div className="text-center">
                     <Loader2 className="w-10 h-10 text-violet-500 animate-spin mx-auto mb-4" />
                     <p className="text-slate-400">Generating quiz...</p>
+                    <p className="text-sm text-slate-500 mt-2">This may take up to a minute...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Handle quiz generation failure or no questions
+    if (!loading && (questions.length === 0 || !currentQuestion)) {
+        return (
+            <div className="min-h-screen bg-slate-950 p-6">
+                <div className="max-w-2xl mx-auto">
+                    <div className="text-center py-12">
+                        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <XCircle className="w-8 h-8 text-red-500" />
+                        </div>
+                        <h2 className="text-xl font-semibold text-white mb-2">Quiz Generation Failed</h2>
+                        <p className="text-slate-400 mb-6">
+                            Unable to generate quiz questions. Please try again.
+                        </p>
+                        <Button onClick={() => router.push(`/learn/${sessionId}`)}>                            Back to Session
+                        </Button>
+                    </div>
                 </div>
             </div>
         );

@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/learn', label: 'Learn', icon: BookOpen },
-    { href: '/mindmap', label: 'Mind Map', icon: Brain },
+    // Mind Map removed - access from subject pages
     { href: '/progress', label: 'Progress', icon: Target },
     { href: '/upload', label: 'Upload', icon: Upload },
 ];

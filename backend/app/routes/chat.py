@@ -84,11 +84,21 @@ async def send_message(
             )
             db.add(concept)
     
+    
     # Add concepts to mindmap
     if concepts:
-        await mindmap_service.add_concepts(
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Adding {len(concepts)} concepts to mindmap for subject {session.subject_id}: {concepts}")
+        
+        added_nodes = await mindmap_service.add_concepts(
             db, current_user.id, session.subject_id, concepts
         )
+        logger.info(f"Successfully added {len(added_nodes)} new nodes to mindmap")
+    else:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("No concepts extracted - mindmap will not be updated")
     
     # Update session timestamp
     from datetime import datetime

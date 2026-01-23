@@ -42,54 +42,57 @@ class QuizService:
         if question_types is None:
             question_types = ["mcq", "true_false", "short_answer"]
         
-        # Gather content for quiz generation
+        # Gather content for quiz generation (SIMPLIFIED to prevent timeout)
         content_parts = []
         
-        # Get session messages
+        # Get only the 2 most recent session messages (reduced from 5)
         result = await db.execute(
-            select(Message)
+            select( Message)
             .where(Message.session_id == session_id, Message.role == "assistant")
             .order_by(Message.created_at.desc())
-            .limit(5)
+            .limit(2)  # Reduced
         )
         messages = result.scalars().all()
         
         for msg in messages:
-            content_parts.append(msg.content[:1000])
+            content_parts.append(msg.content[:500])  # Reduced from 1000
         
-        # Get session concepts
+        # Get session concepts (just names)
         result = await db.execute(
             select(SessionConcept)
             .where(SessionConcept.session_id == session_id)
+            .limit(5)  # Limit concepts
         )
         concepts = result.scalars().all()
         
-        for concept in concepts:
-            content_parts.append(f"Concept: {concept.concept_name}")
-            if concept.explanation:
-                content_parts.append(concept.explanation[:500])
+        concept_names = [c.concept_name for c in concepts]
+        if concept_names:
+            content_parts.append("Key Topics: " + ", ".join(concept_names))
         
-        # Get some RAG context
-        rag_results = embedding_service.search(
-            " ".join([c.concept_name for c in concepts[:3]]) if concepts else "general",
-            top_k=3,
-            subject_id=subject_id
-        )
-        
-        for result in rag_results:
-            content_parts.append(result['metadata']['content'][:500])
+        # Skip RAG search to speed up (commented out)
+        # rag_results = embedding_service.search(...)
         
         content = "\n\n".join(content_parts)
         
-        # Generate questions using LLM
-        questions_json = await llm_service.generate_quiz_questions(
-            content,
-            num_questions,
-            question_types
-        )
+        # Limit total content length to prevent timeout
+        if len(content) > 2000:
+            content = content[:2000]
         
-        # Parse questions
-        questions_data = self._parse_quiz_json(questions_json, num_questions)
+        # Generate questions using LLM (with fallback if timeout)
+        questions_data = []
+        try:
+            questions_json = await llm_service.generate_quiz_questions(
+                content,
+                num_questions,
+                question_types
+            )
+            # Parse questions
+            questions_data = self._parse_quiz_json(questions_json, num_questions)
+        except Exception as e:
+            # Fallback: create simple questions from content
+            import logging
+            logging.warning(f"LLM quiz generation failed: {e}. Using fallback.")
+            questions_data = self._create_fallback_questions(content, num_questions, concepts)
         
         # Create quiz attempt
         attempt = QuizAttempt(
@@ -119,6 +122,46 @@ class QuizService:
         await db.refresh(attempt)
         
         return attempt, questions
+    
+    def _create_fallback_questions(self, content: str, num_questions: int, concepts) -> List[dict]:
+        """Create simple quiz questions when LLM fails"""
+        questions = []
+        
+        # Extract some sentences from content
+        sentences = [s.strip() for s in content.split('.') if len(s.strip()) > 20][:num_questions*2]
+        
+        for i in range(min(num_questions, len(sentences))):
+            concept_name = concepts[i % len(concepts)].concept_name if concepts else "General"
+            
+            if i % 3 == 0:  # MCQ
+                questions.append({
+                    'type': 'mcq',
+                    'question': f"What is the main idea about {concept_name}?",
+                    'options': [
+                        f'A) {sentences[i][:50] if i < len(sentences) else "Option A"}...',
+                        'B) A different concept',
+                        'C) Not related',
+                        'D) None of the above'
+                    ],
+                    'answer': 'A',
+                    'concept': concept_name
+                })
+            elif i % 3 == 1:  # True/False
+                questions.append({
+                    'type': 'true_false',
+                    'question': f"True or False: {concept_name} is an important concept in this topic.",
+                    'answer': 'True',
+                    'concept': concept_name
+                })
+            else:  # Short answer
+                questions.append({
+                    'type': 'short_answer',
+                    'question': f"Explain {concept_name} in one sentence.",
+                    'answer': concept_name,
+                    'concept': concept_name
+                })
+        
+        return questions if questions else self._parse_quiz_json("", num_questions)
     
     def _parse_quiz_json(self, json_str: str, expected_count: int) -> List[dict]:
         """Parse quiz JSON from LLM output"""

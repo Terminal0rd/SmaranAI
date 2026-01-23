@@ -138,23 +138,21 @@ Please provide a clear, educational whiteboard-style response."""
         question_types: List[str] = None
     ) -> str:
         """Generate quiz questions from content"""
-        types = question_types or ["mcq", "true_false", "short_answer"]
-        types_str = ", ".join(types)
+        types = question_types or ["mcq", "true_false"]  # Remove short_answer to simplify
         
-        system_prompt = """You are a quiz generator. Generate quiz questions in valid JSON format only.
-Output ONLY the JSON array, no markdown code blocks, no explanations."""
+        # Simplified system prompt
+        system_prompt = "You are a quiz generator. Generate questions in JSON format ONLY. No explanations."
         
-        user_prompt = f"""Generate {num_questions} quiz questions based on this content.
-Question types to use: {types_str}
+        # Much simpler user prompt
+        user_prompt = f"""Create {num_questions} quiz questions from this content.
 
 CONTENT:
-{content}
+{content[:1000]}
 
-OUTPUT FORMAT (JSON array only):
+OUTPUT (JSON array only, no markdown):
 [
-  {{"type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "answer": "A", "concept": "..."}},
-  {{"type": "true_false", "question": "...", "answer": "True", "concept": "..."}},
-  {{"type": "short_answer", "question": "...", "answer": "...", "concept": "..."}}
+  {{"type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "answer": "A"}},
+  {{"type": "true_false", "question": "...", "answer": "True"}}
 ]"""
         
         messages = [
@@ -162,7 +160,7 @@ OUTPUT FORMAT (JSON array only):
             {"role": "user", "content": user_prompt}
         ]
         
-        return await self.chat_completion(messages, max_tokens=1500, temperature=0.5)
+        return await self.chat_completion(messages, max_tokens=800, temperature=0.3)  # Reduced from 1500
     
     async def generate_youtube_keywords(
         self,
