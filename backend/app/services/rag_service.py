@@ -24,16 +24,29 @@ class RAGService:
     ) -> Tuple[str, List[dict]]:
         """
         Retrieve relevant context for a query
+        SMART SEARCH: Prioritizes current subject, falls back to all subjects
         
         Args:
             query: User's question
-            subject_id: Optional subject filter
+            subject_id: Optional subject filter (prioritized)
             top_k: Number of chunks to retrieve
             
         Returns:
             Tuple of (context string, sources list)
         """
+        # First: Search within the current subject
         results = embedding_service.search(query, top_k=top_k, subject_id=subject_id)
+        
+        # If not enough quality results, search globally
+        quality_results = [r for r in results if r['score'] > 0.3]
+        
+        if len(quality_results) < 3 and subject_id:
+            logger.info(f"Only {len(quality_results)} results in subject {subject_id}, searching globally...")
+            global_results = embedding_service.search(query, top_k=top_k, subject_id=None)
+            
+            # Merge results, prioritizing subject-specific ones
+            all_results = results + [r for r in global_results if r not in results]
+            results = all_results[:top_k]
         
         if not results:
             return "", []
@@ -46,10 +59,18 @@ class RAGService:
             if result['score'] > 0.3:  # Only include relevant results
                 metadata = result['metadata']
                 context_parts.append(metadata['content'])
-                sources.append({
+                
+                # Mark if from current subject or cross-subject
+                source_info = {
                     'filename': metadata['filename'],
                     'chunk_preview': metadata.get('content_preview', metadata['content'][:100])
-                })
+                }
+                
+                # Add indicator if from different subject
+                if subject_id and metadata.get('subject_id') != subject_id:
+                    source_info['cross_subject'] = True
+                    
+                sources.append(source_info)
         
         context = "\n\n---\n\n".join(context_parts)
         return context, sources
