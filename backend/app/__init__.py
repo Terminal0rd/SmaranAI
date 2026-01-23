@@ -1,0 +1,3 @@
+"""
+SmaranAI Backend App
+"""

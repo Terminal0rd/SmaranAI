@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+:root {
+  --background: #020617;
+  --foreground: #f8fafc;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Prose styles for markdown */
+.prose {
+  color: #e2e8f0;
+  max-width: none;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  color: #f8fafc;
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.prose h1 { font-size: 1.75rem; }
+.prose h2 { font-size: 1.5rem; }
+.prose h3 { font-size: 1.25rem; }
+
+.prose p {
+  margin-bottom: 1em;
+  line-height: 1.7;
+}
+
+.prose ul, .prose ol {
+  margin-left: 1.5em;
+  margin-bottom: 1em;
+}
+
+.prose li {
+  margin-bottom: 0.5em;
+}
+
+.prose code {
+  background: #1e293b;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #a78bfa;
+}
+
+.prose pre {
+  background: #1e293b;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+
+.prose pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.prose blockquote {
+  border-left: 4px solid #8b5cf6;
+  padding-left: 1em;
+  margin-left: 0;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.prose strong {
+  color: #f8fafc;
+  font-weight: 600;
+}
+
+.prose a {
+  color: #a78bfa;
+  text-decoration: underline;
+}
+
+.prose a:hover {
+  color: #c4b5fd;
+}
+
+/* ReactFlow custom styles */
+.react-flow__node {
+  font-size: 12px;
+}
+
+.react-flow__controls {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+}
+
+.react-flow__controls-button {
+  background: #1e293b !important;
+  border: none !important;
+  color: #94a3b8 !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #334155 !important;
+}
+
+.react-flow__minimap {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+}
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.5);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(139, 92, 246, 0.3);
+  color: #f8fafc;
+}
