@@ -23,9 +23,28 @@ async def get_mindmap(
     current_user: User = Depends(get_current_user)
 ):
     """Get the complete mind map for a subject"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"GET mindmap for subject={subject_id}, user={current_user.id} ({current_user.email})")
+    
     nodes, edges = await mindmap_service.get_mindmap(
         db, current_user.id, subject_id
     )
+    
+    logger.info(f"Found {len(nodes)} nodes and {len(edges)} edges in DB")
+    
+    # Auto-generate mindmap if empty
+    if not nodes:
+        logger.info(f"No mindmap found for subject {subject_id}, auto-generating...")
+        
+        nodes = await mindmap_service.auto_generate_from_sessions(
+            db, current_user.id, subject_id
+        )
+        logger.info(f"Auto-generated {len(nodes)} nodes")
+        
+        # Edges will be empty for now (can add auto-linking later)
+        edges = []
     
     return MindMapResponse(
         subject_id=subject_id,

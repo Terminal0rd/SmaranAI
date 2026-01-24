@@ -246,6 +246,101 @@ class MindMapService:
             )
         )
         return list(result.scalars().all())
+    
+    async def auto_generate_from_sessions(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        subject_id: str,
+        max_nodes: int = 10
+    ) -> List[MindMapNode]:
+        """
+        Auto-generate mindmap nodes from recent session concepts
+        Uses regex fallback for reliable concept extraction
+        """
+        from app.models.session import Session, Message
+        import re
+        
+        # Get recent sessions for this subject
+        result = await db.execute(
+            select(Session)
+            .where(
+                Session.user_id == user_id,
+                Session.subject_id == subject_id
+            )
+            .order_by(Session.updated_at.desc())
+            .limit(5)
+        )
+        sessions = result.scalars().all()
+        
+        if not sessions:
+            return []
+        
+        # Extract concepts from assistant messages
+        all_concepts = []
+        for session in sessions:
+            result = await db.execute(
+                select(Message)
+                .where(
+                    Message.session_id == session.id,
+                    Message.role == "assistant"
+                )
+                .order_by(Message.created_at.desc())
+                .limit(3)
+            )
+            messages = result.scalars().all()
+            
+            for msg in messages:
+                # Regex-based concept extraction (no LLM needed)
+                text = msg.content[:1000]
+                
+                # Extract multi-word capitalized terms
+                multi_word = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', text)
+                
+                # Extract single capitalized words (min 3 chars)
+                single_word = re.findall(r'\b[A-Z][a-z]{2,}\b', text)
+                
+                # Filter common words
+                exclude = {'The', 'This', 'That', 'These', 'Those', 'What', 'When', 
+                          'Where', 'Why', 'How', 'Which', 'Who', 'And', 'But', 'For'}
+                
+                concepts = multi_word + [w for w in single_word if w not in exclude]
+                all_concepts.extend(concepts)
+        
+        # Get unique concepts
+        unique_concepts = list(dict.fromkeys(all_concepts))[:max_nodes]
+        
+        if not unique_concepts:
+            # Fallback: create a default node for the subject
+            unique_concepts = ["Getting Started"]
+        
+        # Create nodes with spiral layout
+        nodes = []
+        for i, concept in enumerate(unique_concepts):
+            angle = i * 0.8
+            radius = 150 + (i // 6) * 100
+            x = radius * math.cos(angle)
+            y = radius * math.sin(angle)
+            
+            node = MindMapNode(
+                subject_id=subject_id,
+                user_id=user_id,
+                label=concept,
+                x_position=x,
+                y_position=y,
+                mastery_level=0.2,  # Default low mastery
+                status="learning"
+            )
+            db.add(node)
+            nodes.append(node)
+        
+        # Commit nodes
+        if nodes:
+            await db.commit()
+            for node in nodes:
+                await db.refresh(node)
+        
+        return nodes
 
 
 # Global instance
