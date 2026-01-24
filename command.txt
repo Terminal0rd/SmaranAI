@@ -1,0 +1,16 @@
+to run the model :
+
+cd S:\llama
+llama-server.exe --model S:\llama\models\Phi-3-mini-4k-instruct-q4.gguf
+
+to start frontend :
+
+cd frontend
+npm install
+npm run dev
+
+to start backend : 
+
+cd backend
+uvicorn app.main:app --reload
+
