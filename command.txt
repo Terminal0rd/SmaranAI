@@ -1,0 +1,16 @@
+#to start llm server
+Command cd E:\llama
+
+llama-server.exe --model E:\llama\models\Phi-3-mini-4k-instruct-q4.gguf
+
+#to start frontend
+
+cd frontend
+npm run dev
+
+
+#to start backend
+
+cd backend
+venv\Scripts\activate
+uvicorn app.main:app --reload
