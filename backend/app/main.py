@@ -20,6 +20,7 @@ from app.routes import (
     documents_router
 )
 from app.routes.export import router as export_router
+from app.routes.teacher import router as teacher_router
 
 # Configure logging
 logging.basicConfig(
@@ -103,6 +104,7 @@ app.include_router(quiz_router)
 app.include_router(progress_router)
 app.include_router(documents_router)
 app.include_router(export_router)
+app.include_router(teacher_router)
 
 
 # Health check

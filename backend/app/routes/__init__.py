@@ -10,6 +10,7 @@ from app.routes.quiz import router as quiz_router
 from app.routes.progress import router as progress_router
 from app.routes.documents import router as documents_router
 from app.routes.export import router as export_router
+from app.routes.teacher import router as teacher_router
 
 __all__ = [
     "auth_router",
@@ -21,4 +22,5 @@ __all__ = [
     "progress_router",
     "documents_router",
     "export_router",
+    "teacher_router",
 ]

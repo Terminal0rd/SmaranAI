@@ -242,4 +242,26 @@ export interface QuizResult {
     }[];
 }
 
+// Teacher Mode API
+export const teacherAPI = {
+    createRoadmap: (data: { subject: string; goal?: string }) =>
+        api.post('/api/teacher/roadmap/create', data),
+    getAllRoadmaps: () =>
+        api.get('/api/teacher/roadmap'),
+    getRoadmap: (roadmapId: string) =>
+        api.get(`/api/teacher/roadmap/${roadmapId}`),
+    getModule: (roadmapId: string, moduleId: string) =>
+        api.get(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}`),
+    generateTeach: (roadmapId: string, moduleId: string) =>
+        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/teach`),
+    generateCheck: (roadmapId: string, moduleId: string) =>
+        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/check/generate`),
+    submitCheck: (roadmapId: string, moduleId: string, answers: any[]) =>
+        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/check/submit`, { answers }),
+    generateReteach: (roadmapId: string, moduleId: string, weakTopics: string[]) =>
+        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/reteach`, { weak_topics: weakTopics }),
+    getMemoryCards: (roadmapId: string, moduleId: string) =>
+        api.get(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/memory-cards`),
+};
+
 export default api;
