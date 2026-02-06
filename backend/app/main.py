@@ -42,11 +42,44 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
     
+    # Ensure "General" subject exists (for auto-classification fallback)
+    from app.database import AsyncSessionLocal
+    from app.models.subject import Subject
+    from sqlalchemy import select
+    
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(
+                select(Subject).where(Subject.name == "General")
+            )
+            general_subject = result.scalar_one_or_none()
+            
+            if not general_subject:
+                general = Subject(
+                    name="General",
+                    description="General knowledge and uncategorized content"
+                )
+                db.add(general)
+                await db.commit()
+                logger.info("Created 'General' subject for auto-classification")
+            else:
+                logger.info("'General' subject already exists")
+        except Exception as e:
+            logger.warning(f"Could not ensure General subject: {e}")
+    
     # Create storage directories
     from pathlib import Path
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     Path(settings.vector_store_path).parent.mkdir(parents=True, exist_ok=True)
     logger.info("Storage directories created")
+    
+    # Pre-load vector store at startup
+    from app.services.embedding_service import embedding_service
+    try:
+        stats = embedding_service.get_stats()
+        logger.info(f"Vector store loaded: {stats['total_chunks']} chunks from {stats['documents']} documents")
+    except Exception as e:
+        logger.warning(f"Vector store initialization warning: {e}")
     
     yield
     

@@ -76,10 +76,7 @@ export default function UploadPage() {
     };
 
     const uploadFile = async (file: File) => {
-        if (!selectedSubject) {
-            toast.error('Please select a subject first');
-            return;
-        }
+        // Subject is now optional - backend will auto-classify if not provided
 
         if (!file.name.toLowerCase().endsWith('.pdf')) {
             toast.error('Only PDF files are allowed');
@@ -93,7 +90,8 @@ export default function UploadPage() {
 
         setUploading(true);
         try {
-            const response = await documentsAPI.upload(file, selectedSubject);
+            // Pass selectedSubject (empty string triggers auto-classification)
+            const response = await documentsAPI.upload(file, selectedSubject || '');
             setDocuments(prev => [response.data, ...prev]);
             toast.success('Document uploaded! Processing...');
 
@@ -151,23 +149,30 @@ export default function UploadPage() {
                     </p>
                 </motion.div>
 
-                {/* Subject Selection */}
+                {/* Subject Selection - NOW OPTIONAL */}
                 <Card className="mb-6">
                     <CardContent className="pt-6">
                         <label className="block text-sm font-medium text-slate-300 mb-2">
-                            Select Subject
+                            Select Subject (Optional)
+                            <span className="ml-2 text-xs text-slate-500">
+                                ✨ Leave empty to auto-detect
+                            </span>
                         </label>
                         <select
                             value={selectedSubject}
                             onChange={(e) => setSelectedSubject(e.target.value)}
                             className="w-full p-3 rounded-lg bg-slate-800 border border-slate-700 text-white focus:border-violet-500 focus:outline-none"
                         >
+                            <option value="">🤖 Auto-detect subject</option>
                             {subjects.map((subject) => (
                                 <option key={subject.id} value={subject.id}>
                                     {subject.icon} {subject.name}
                                 </option>
                             ))}
                         </select>
+                        <p className="mt-2 text-xs text-slate-500">
+                            AI will automatically classify your PDF if no subject is selected
+                        </p>
                     </CardContent>
                 </Card>
 

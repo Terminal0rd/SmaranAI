@@ -99,13 +99,14 @@ export const quizAPI = {
         api.post('/api/quiz/generate', {
             session_id: sessionId,
             num_questions: numQuestions || 5,
-            question_types: questionTypes || ['mcq', 'true_false', 'short_answer'],
+            question_types: questionTypes,
         }),
     submit: (attemptId: string, answers: { question_id: string; answer: string }[]) =>
         api.post('/api/quiz/submit', { attempt_id: attemptId, answers }),
     getHistory: (subjectId?: string) =>
         api.get('/api/quiz/history', { params: subjectId ? { subject_id: subjectId } : {} }),
-    getResult: (attemptId: string) => api.get(`/api/quiz/${attemptId}`),
+    getAttempt: (attemptId: string) =>
+        api.get(`/api/quiz/${attemptId}`),
 };
 
 // Progress API
@@ -262,6 +263,8 @@ export const teacherAPI = {
         api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/reteach`, { weak_topics: weakTopics }),
     getMemoryCards: (roadmapId: string, moduleId: string) =>
         api.get(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/memory-cards`),
+    teachChat: (roadmapId: string, moduleId: string, message: string) =>
+        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/chat`, { message }),
 };
 
 export default api;

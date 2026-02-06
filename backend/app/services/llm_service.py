@@ -89,7 +89,15 @@ class LLMService:
     ) -> str:
         """
         Generate a whiteboard-style educational response
+        **WITH CACHING**: Reuses identical responses for same question+context
         """
+        from app.services.response_cache import response_cache
+        
+        # Check cache first
+        cached_response = response_cache.get(question, context)
+        if cached_response:
+            return cached_response
+        
         system_prompt = """You are an expert AI tutor helping a student learn. Create clear, educational responses in a "whiteboard" style.
 
 FORMAT YOUR RESPONSE AS STRUCTURED NOTES:
@@ -116,7 +124,12 @@ Please provide a clear, educational whiteboard-style response."""
             {"role": "user", "content": user_prompt}
         ]
         
-        return await self.chat_completion(messages)
+        response = await self.chat_completion(messages)
+        
+        # Store in cache for future use
+        response_cache.set(question, response, context)
+        
+        return response
     
     async def extract_concepts(self, text: str) -> List[str]:
         """Extract key concepts from text"""
@@ -137,30 +150,108 @@ Please provide a clear, educational whiteboard-style response."""
         num_questions: int = 5,
         question_types: List[str] = None
     ) -> str:
-        """Generate quiz questions from content"""
-        types = question_types or ["mcq", "true_false"]  # Remove short_answer to simplify
+        """
+        Generate quiz questions with STRICT JSON schema validation
+        Returns JSON string with validated structure for quiz questions
+        """
+        types = question_types or ["mcq", "true_false"]
         
-        # Simplified system prompt
-        system_prompt = "You are a quiz generator. Generate questions in JSON format ONLY. No explanations."
+        # STRICT system prompt with JSON schema enforcement
+        system_prompt = """You are an expert quiz generator for academic learning sessions.
+
+CRITICAL OUTPUT RULES:
+1. You MUST respond with ONLY valid JSON - NO markdown code blocks (no ```json```)
+2. Use this EXACT schema:
+{
+  "questions": [
+    {
+      "question": "string",
+      "options": ["string", "string", "string", "string"],
+      "correct_index": 0,
+      "explanation": "string"
+    }
+  ]
+}
+
+FIELD REQUIREMENTS:
+- "question": Non-empty string, 10+ chars, references specific content
+- "options": Array of EXACTLY 4 strings, each 30-100 chars
+- "correct_index": Integer 0-3 (position of correct answer in options array)
+- "explanation": Brief explanation of correct answer
+
+CONTENT RULES:
+1. Generate questions ONLY from provided content
+2. NO generic/template questions
+3. Reference specific facts, concepts, definitions
+
+OPTION FORMATTING RULES (CRITICAL):
+- Write options as PLAIN TEXT ONLY
+- NO markdown: no **, no ##, no *italic*, no `code`, no ---
+- NO list prefixes: don't write "A)", "1)", "•", "-"
+- Just write the option text directly
+- Example: "The process of organizing data to reduce redundancy"
+
+MCQ DISTRACTOR RULES:
+- Each MCQ needs 3 realistic, plausible distractors
+- Distractors should be:
+  * Common misconceptions about the topic
+  * Similar but incorrect concepts from content
+  * Edge cases or partial truths
+  * Same style and length as correct answer (30-100 chars)
+  
+FORBIDDEN DISTRACTOR TYPES:
+- "This was not discussed"
+- "The opposite is true"
+- "None of the above"
+- "All of the above"
+- Any meta-answer about the question
+- Any placeholder like "...", "option X"
+
+EXAMPLE VALID OUTPUT:
+{
+  "questions": [
+    {
+      "question": "What is database normalization?",
+      "options": [
+        "The process of organizing data to reduce redundancy",
+        "The process of backing up database files regularly",
+        "The technique for indexing database tables",
+        "A method for encrypting sensitive data"
+      ],
+      "correct_index": 0,
+      "explanation": "Normalization organizes data to minimize redundancy and dependency"
+    }
+  ]
+}
+
+JSON VALIDATION CHECKLIST:
+- Valid JSON syntax (no trailing commas, proper quotes)
+- "questions" array with at least 1 item
+- Each question has all required fields
+- Options array has exactly 4 items
+- correct_index is 0, 1, 2, or 3
+- No markdown formatting in any text field"""
         
-        # Much simpler user prompt
-        user_prompt = f"""Create {num_questions} quiz questions from this content.
+        # Enhanced user prompt
+        user_prompt = f"""Generate {num_questions} quiz questions from this content.
 
-CONTENT:
-{content[:1000]}
+---CONTENT---
+{content[:2000]}
+---END---
 
-OUTPUT (JSON array only, no markdown):
-[
-  {{"type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "answer": "A"}},
-  {{"type": "true_false", "question": "...", "answer": "True"}}
-]"""
+Generate {num_questions} questions as valid JSON (schema from system prompt).
+Remember:
+- correct_index is 0-3 (array position, not letter)
+- Options are plain text (no markdown, no prefixes)
+- Distractors are realistic misconceptions
+- Output ONLY the JSON object, nothing else"""
         
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
         
-        return await self.chat_completion(messages, max_tokens=800, temperature=0.3)  # Reduced from 1500
+        return await self.chat_completion(messages, max_tokens=1000, temperature=0.4)
     
     async def generate_youtube_keywords(
         self,

@@ -203,3 +203,15 @@ class ModuleDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ===== Teach Chat Schemas =====
+
+class TeachChatRequest(BaseModel):
+    """Request for interactive Q&A during teaching"""
+    message: str = Field(..., min_length=1, max_length=1000)
+
+
+class TeachChatResponse(BaseModel):
+    """AI response to student question during teaching"""
+    response: str
