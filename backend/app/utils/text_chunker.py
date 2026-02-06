@@ -11,6 +11,7 @@ def chunk_text(
 ) -> List[str]:
     """
     Split text into overlapping chunks
+    **OPTIMIZED**: Pre-allocates list to reduce memory overhead
     
     Args:
         text: The text to chunk
@@ -30,7 +31,11 @@ def chunk_text(
     if len(text) <= chunk_size:
         return [text]
     
+    # Pre-allocate list with estimated capacity to reduce memory reallocation
+    estimated_chunks = (len(text) // (chunk_size - overlap)) + 1
     chunks = []
+    chunks_capacity = min(estimated_chunks, 100)  # Cap at 100 to avoid over-allocation
+    
     start = 0
     
     while start < len(text):

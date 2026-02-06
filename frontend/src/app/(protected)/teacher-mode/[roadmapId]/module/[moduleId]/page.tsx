@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    ArrowLeft, Loader2, BookOpen, Target, RefreshCw,
+    ArrowLeft, ArrowRight, Loader2, BookOpen, Target, RefreshCw,
     CheckCircle, XCircle, Lightbulb, Award, Sparkles
 } from 'lucide-react';
 import { Button, Card, CardContent } from '@/components/ui';
@@ -29,6 +29,10 @@ export default function ModuleLessonPage() {
     // Teach phase
     const [teachContent, setTeachContent] = useState<any>(null);
     const [loadingTeach, setLoadingTeach] = useState(false);
+    const [showChat, setShowChat] = useState(false);
+    const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', message: string }[]>([]);
+    const [chatInput, setChatInput] = useState('');
+    const [loadingChat, setLoadingChat] = useState(false);
 
     // Check phase
     const [questions, setQuestions] = useState<any[]>([]);
@@ -43,6 +47,7 @@ export default function ModuleLessonPage() {
     // Memory cards
     const [memoryCards, setMemoryCards] = useState<any[]>([]);
     const [flippedCard, setFlippedCard] = useState<number | null>(null);
+    const [currentCardIndex, setCurrentCardIndex] = useState(0);
 
     useEffect(() => {
         fetchModule();
@@ -136,20 +141,49 @@ export default function ModuleLessonPage() {
         }
     };
 
+    const sendChatMessage = async () => {
+        if (!chatInput.trim() || loadingChat) return;
+
+        const userMessage = chatInput.trim();
+        setChatInput('');
+        setChatMessages(prev => [...prev, { role: 'user', message: userMessage }]);
+        setLoadingChat(true);
+
+        try {
+            const res = await teacherAPI.teachChat(roadmapId, moduleId, userMessage);
+            setChatMessages(prev => [...prev, { role: 'assistant', message: res.data.response }]);
+        } catch (err) {
+            console.error('Failed to send chat:', err);
+            setChatMessages(prev => [...prev, { role: 'assistant', message: 'Sorry, I encountered an error. Please try again.' }]);
+        } finally {
+            setLoadingChat(false);
+        }
+    };
+
+    // Auto-load teach content
     useEffect(() => {
         if (phase === 'teach' && !teachContent && !loading && module) {
             loadTeachContent();
         }
     }, [phase, loading, module]);
 
+    // Auto-load memory cards
+    useEffect(() => {
+        if (phase === 'cards' && memoryCards.length === 0 && !loading && module) {
+            loadMemoryCards();
+        }
+    }, [phase, loading, module]);
+
     const getSectionIcon = (type: string) => {
         switch (type) {
+            case 'intro': return '👋';
             case 'definition': return '📖';
             case 'concept': return '💡';
             case 'example': return '🔍';
+            case 'practice': return '🎯';
             case 'mistake': return '⚠️';
-            case 'summary': return '📝';
-            default: return '•';
+            case 'summary': return '✨';
+            default: return '📝';
         }
     };
 
@@ -200,59 +234,128 @@ export default function ModuleLessonPage() {
 
                 {/* Content based on phase */}
                 {phase === 'teach' && (
-                    <div>
-                        <Card className="!bg-slate-900 mb-6">
-                            <CardContent className="p-6">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <BookOpen className="w-6 h-6 text-violet-500" />
-                                    <h2 className="text-2xl font-semibold text-white">Class Whiteboard</h2>
-                                </div>
-
-                                {loadingTeach ? (
-                                    <div className="flex flex-col items-center justify-center py-12">
-                                        <Loader2 className="w-8 h-8 text-violet-500 animate-spin mb-4" />
-                                        <p className="text-slate-400">Generating teaching content...</p>
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                        {/* LEFT: Whiteboard Content - 60% */}
+                        <div className="lg:col-span-3">
+                            <Card className="!bg-slate-900 h-full">
+                                <CardContent className="p-6">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <BookOpen className="w-6 h-6 text-violet-500" />
+                                        <h2 className="text-2xl font-semibold text-white">Class Whiteboard</h2>
                                     </div>
-                                ) : teachContent && teachContent.sections ? (
-                                    <div className="space-y-6">
-                                        {teachContent.sections.map((section: any, i: number) => (
-                                            <div key={i} className="border-l-4 border-violet-500 pl-4">
-                                                <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-2">
-                                                    <span>{getSectionIcon(section.type)}</span>
-                                                    {section.title}
-                                                </h3>
-                                                <div className="text-slate-300 whitespace-pre-wrap">
-                                                    {section.content}
+
+                                    {loadingTeach ? (
+                                        <div className="flex flex-col items-center justify-center py-12">
+                                            <Loader2 className="w-8 h-8 text-violet-500 animate-spin mb-4" />
+                                            <p className="text-slate-400">Generating teaching content...</p>
+                                        </div>
+                                    ) : teachContent && teachContent.sections ? (
+                                        <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2">
+                                            {teachContent.sections.map((section: any, i: number) => (
+                                                <div key={i} className="border-l-4 border-violet-500 pl-4 py-2">
+                                                    <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-2">
+                                                        <span>{getSectionIcon(section.type)}</span>
+                                                        {section.title}
+                                                    </h3>
+                                                    <div className="text-slate-300 whitespace-pre-wrap leading-relaxed">
+                                                        {section.content}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center py-12">
-                                        <p className="text-slate-400 mb-4">Click below to load lesson content</p>
-                                        <Button onClick={loadTeachContent} className="bg-violet-500 hover:bg-violet-600">
-                                            <BookOpen className="w-4 h-4 mr-2" />
-                                            Load Teaching Content
-                                        </Button>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-12">
+                                            <p className="text-slate-400">Loading teaching content...</p>
+                                        </div>
+                                    )}
 
+                                    {teachContent && (
+                                        <Button
+                                            onClick={() => startCheck()}
+                                            disabled={loadingCheck}
+                                            size="lg"
+                                            className="w-full mt-6 bg-violet-500 hover:bg-violet-600"
+                                        >
+                                            {loadingCheck ? (
+                                                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                                            ) : (
+                                                <Target className="w-5 h-5 mr-2" />
+                                            )}
+                                            Ready for the Check
+                                        </Button>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* RIGHT: Q&A Panel - 40% */}
                         {teachContent && (
-                            <Button
-                                onClick={() => startCheck()}
-                                disabled={loadingCheck}
-                                size="lg"
-                                className="w-full bg-violet-500 hover:bg-violet-600"
-                            >
-                                {loadingCheck ? (
-                                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                                ) : (
-                                    <Target className="w-5 h-5 mr-2" />
-                                )}
-                                I'm Ready for Check
-                            </Button>
+                            <div className="lg:col-span-2">
+                                <Card className="!bg-slate-900 h-full sticky top-6">
+                                    <CardContent className="p-6 flex flex-col h-full">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Lightbulb className="w-5 h-5 text-violet-500" />
+                                            <h3 className="text-xl font-semibold text-white">Have Questions? Ask Me!</h3>
+                                        </div>
+
+                                        {/* Chat Messages */}
+                                        <div className="flex-1 bg-slate-800 rounded-lg p-4 mb-4 overflow-y-auto space-y-3" style={{ minHeight: '400px', maxHeight: '500px' }}>
+                                            {chatMessages.length === 0 ? (
+                                                <p className="text-slate-400 text-sm text-center py-4">
+                                                    Ask any question about this module, and I'll help you understand better!
+                                                </p>
+                                            ) : (
+                                                chatMessages.map((msg, i) => (
+                                                    <div
+                                                        key={i}
+                                                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                                    >
+                                                        <div
+                                                            className={`max-w-[85%] px-4 py-2 rounded-lg ${msg.role === 'user'
+                                                                    ? 'bg-violet-500 text-white'
+                                                                    : 'bg-slate-700 text-slate-100'
+                                                                }`}
+                                                        >
+                                                            <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                            {loadingChat && (
+                                                <div className="flex justify-start">
+                                                    <div className="bg-slate-700 px-4 py-2 rounded-lg">
+                                                        <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Chat Input */}
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={chatInput}
+                                                onChange={(e) => setChatInput(e.target.value)}
+                                                onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
+                                                placeholder="Type your question..."
+                                                className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-violet-500"
+                                                disabled={loadingChat}
+                                            />
+                                            <Button
+                                                onClick={sendChatMessage}
+                                                disabled={!chatInput.trim() || loadingChat}
+                                                className="bg-violet-500 hover:bg-violet-600"
+                                            >
+                                                {loadingChat ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    'Ask'
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
                         )}
                     </div>
                 )}
@@ -266,14 +369,25 @@ export default function ModuleLessonPage() {
                     >
                         <Card className="!bg-slate-900 mb-6">
                             <CardContent className="p-6">
-                                <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center justify-between mb-4">
                                     <h2 className="text-2xl font-semibold text-white flex items-center gap-2">
                                         <Target className="w-6 h-6 text-violet-500" />
                                         Check Your Understanding
                                     </h2>
-                                    <span className="text-slate-400">
-                                        Question {currentQuestionIndex + 1} of {questions.length}
-                                    </span>
+                                    <div className="flex items-center gap-3">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setPhase('teach')}
+                                            className="text-slate-400 hover:text-white"
+                                        >
+                                            <ArrowLeft className="w-4 h-4 mr-1" />
+                                            Back to Teaching
+                                        </Button>
+                                        <span className="text-slate-400">
+                                            Question {currentQuestionIndex + 1} of {questions.length}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {questions[currentQuestionIndex] && (
@@ -460,50 +574,129 @@ export default function ModuleLessonPage() {
                     >
                         <Card className="!bg-slate-900 mb-6">
                             <CardContent className="p-6">
-                                <h2 className="text-2xl font-semibold text-white mb-6 flex items-center gap-2">
-                                    <Sparkles className="w-6 h-6 text-yellow-500" />
-                                    Memory Cards for Retention
-                                </h2>
-
-                                <div className="grid gap-4">
-                                    {memoryCards.map((card, i) => (
-                                        <div
-                                            key={card.id}
-                                            onClick={() => setFlippedCard(flippedCard === i ? null : i)}
-                                            className="cursor-pointer perspective-1000"
-                                        >
-                                            <div className={`relative h-48 transition-transform duration-500 transform-style-3d ${flippedCard === i ? 'rotate-y-180' : ''
-                                                }`}>
-                                                {/* Front */}
-                                                <div className="absolute inset-0 backface-hidden">
-                                                    <div className="h-full p-6 bg-violet-500/10 border-2 border-violet-500 rounded-lg flex items-center justify-center">
-                                                        <p className="text-xl text-white text-center">{card.front_text}</p>
-                                                    </div>
-                                                </div>
-                                                {/* Back */}
-                                                <div className="absolute inset-0 backface-hidden rotate-y-180">
-                                                    <div className="h-full p-6 bg-green-500/10 border-2 border-green-500 rounded-lg flex items-center justify-center">
-                                                        <p className="text-lg text-slate-200 text-center">{card.back_text}</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
+                                <div className="flex items-center justify-between mb-6">
+                                    <h2 className="text-2xl font-semibold text-white flex items-center gap-2">
+                                        <Sparkles className="w-6 h-6 text-yellow-500" />
+                                        Memory Cards for Retention
+                                    </h2>
+                                    {memoryCards.length > 0 && (
+                                        <span className="text-slate-400">
+                                            Card {currentCardIndex + 1} of {memoryCards.length}
+                                        </span>
+                                    )}
                                 </div>
 
-                                <Button
-                                    onClick={() => router.push(`/teacher-mode/${roadmapId}`)}
-                                    size="lg"
-                                    className="w-full mt-6 bg-green-600 hover:bg-green-700"
-                                >
-                                    <CheckCircle className="w-5 h-5 mr-2" />
-                                    Continue to Next Module
-                                </Button>
+                                {memoryCards.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-12">
+                                        <Loader2 className="w-8 h-8 text-violet-500 animate-spin mb-4" />
+                                        <p className="text-slate-400">Generating memory cards...</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        {/* Current Card */}
+                                        <div
+                                            onClick={() => setFlippedCard(flippedCard === currentCardIndex ? null : currentCardIndex)}
+                                            className="cursor-pointer"
+                                        >
+                                            <div className="relative h-64">
+                                                {/* Card Container with flip animation */}
+                                                <motion.div
+                                                    className="w-full h-full"
+                                                    animate={{ rotateY: flippedCard === currentCardIndex ? 180 : 0 }}
+                                                    transition={{ duration: 0.6 }}
+                                                    style={{ transformStyle: 'preserve-3d' }}
+                                                >
+                                                    {/* Front */}
+                                                    <div
+                                                        className="absolute inset-0 p-8 bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border-2 border-violet-500 rounded-xl flex flex-col items-center justify-center"
+                                                        style={{
+                                                            backfaceVisibility: 'hidden',
+                                                            transform: 'rotateY(0deg)'
+                                                        }}
+                                                    >
+                                                        <p className="text-2xl text-white text-center font-semibold mb-4">
+                                                            {memoryCards[currentCardIndex].front_text}
+                                                        </p>
+                                                        <p className="text-sm text-slate-400">Click to reveal answer</p>
+                                                    </div>
+
+                                                    {/* Back */}
+                                                    <div
+                                                        className="absolute inset-0 p-8 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border-2 border-emerald-500 rounded-xl flex flex-col items-center justify-center"
+                                                        style={{
+                                                            backfaceVisibility: 'hidden',
+                                                            transform: 'rotateY(180deg)'
+                                                        }}
+                                                    >
+                                                        <p className="text-lg text-slate-100 text-center leading-relaxed">
+                                                            {memoryCards[currentCardIndex].back_text}
+                                                        </p>
+                                                    </div>
+                                                </motion.div>
+                                            </div>
+                                        </div>
+
+                                        {/* Progress Bar */}
+                                        <div className="bg-slate-800 rounded-full h-2 overflow-hidden">
+                                            <div
+                                                className="bg-violet-500 h-full transition-all duration-300"
+                                                style={{ width: `${((currentCardIndex + 1) / memoryCards.length) * 100}%` }}
+                                            />
+                                        </div>
+
+                                        {/* Navigation */}
+                                        <div className="flex gap-3">
+                                            <Button
+                                                onClick={() => setCurrentCardIndex(prev => Math.max(0, prev - 1))}
+                                                disabled={currentCardIndex === 0}
+                                                variant="outline"
+                                                className="flex-1"
+                                            >
+                                                <ArrowLeft className="w-4 h-4 mr-2" />
+                                                Previous
+                                            </Button>
+                                            <Button
+                                                onClick={() => setCurrentCardIndex(prev => Math.min(memoryCards.length - 1, prev + 1))}
+                                                disabled={currentCardIndex === memoryCards.length - 1}
+                                                className="flex-1 bg-violet-500 hover:bg-violet-600"
+                                            >
+                                                Next
+                                                <ArrowRight className="w-4 h-4 ml-2" />
+                                            </Button>
+                                        </div>
+
+                                        {/* Keyboard Hint */}
+                                        <p className="text-center text-sm text-slate-500">
+                                            💡 Tip: Click card to flip • Use buttons to navigate cards
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Actions */}
+                                <div className="flex gap-3 mt-6">
+                                    <Button
+                                        onClick={() => setPhase('teach')}
+                                        variant="outline"
+                                        size="lg"
+                                        className="flex-1"
+                                    >
+                                        <BookOpen className="w-5 h-5 mr-2" />
+                                        Review Teaching
+                                    </Button>
+                                    <Button
+                                        onClick={() => router.push(`/teacher-mode/${roadmapId}`)}
+                                        size="lg"
+                                        className="flex-1 bg-green-600 hover:bg-green-700"
+                                    >
+                                        <Award className="w-5 h-5 mr-2" />
+                                        Complete Module
+                                    </Button>
+                                </div>
                             </CardContent>
                         </Card>
                     </motion.div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }

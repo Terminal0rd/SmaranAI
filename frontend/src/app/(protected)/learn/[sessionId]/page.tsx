@@ -165,9 +165,10 @@ export default function SessionPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-950 flex flex-col">
-            {/* Header */}
-            <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-4 py-3">
+        /* FIXED: Position below global navbar (top-16) to prevent overlap */
+        <div className="fixed inset-x-0 bottom-0 top-16 bg-slate-950 flex flex-col overflow-hidden z-40">
+            {/* FIXED: Sticky Header - Always visible at top */}
+            <header className="flex-shrink-0 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 z-50">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <Button variant="ghost" size="sm" onClick={() => router.push('/learn')}>
@@ -232,8 +233,8 @@ export default function SessionPage() {
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => setActiveSlide(index)}
                                 className={`w-full p-2 rounded-lg mb-2 text-left transition-colors ${activeSlide === index
-                                        ? 'bg-violet-500/20 border border-violet-500'
-                                        : 'bg-slate-800/50 border border-transparent hover:bg-slate-800'
+                                    ? 'bg-violet-500/20 border border-violet-500'
+                                    : 'bg-slate-800/50 border border-transparent hover:bg-slate-800'
                                     }`}
                             >
                                 <div className="aspect-video bg-slate-800 rounded mb-1 flex items-center justify-center text-xs text-slate-500">
@@ -247,8 +248,9 @@ export default function SessionPage() {
                     </aside>
                 )}
 
-                {/* Main Content - Whiteboard */}
-                <main className="flex-1 flex flex-col overflow-hidden">
+                {/* Main Content - FIXED: Flex column with sticky input */}
+                <main className="flex-1 flex flex-col h-full overflow-hidden">
+                    {/* Scrollable Content Area */}
                     <div className="flex-1 overflow-y-auto p-6">
                         <AnimatePresence mode="wait">
                             {currentSlide ? (
@@ -258,10 +260,23 @@ export default function SessionPage() {
                                     animate={{ opacity: 1, x: 0 }}
                                     exit={{ opacity: 0, x: -50 }}
                                     transition={{ duration: 0.3 }}
-                                    className="max-w-4xl mx-auto"
+                                    className="max-w-4xl mx-auto pb-6"
                                 >
+                                    {/* FIXED: Show user question before AI answer */}
+                                    {(() => {
+                                        const slideIndex = slides.indexOf(currentSlide);
+                                        const userQuestion = messages.filter(m => m.role === 'user')[slideIndex];
+                                        return userQuestion ? (
+                                            <div className="mb-4 p-4 rounded-lg bg-violet-500/10 border border-violet-500/20">
+                                                <p className="text-xs text-violet-400 uppercase tracking-wide mb-1">Your Question</p>
+                                                <p className="text-white font-medium">{userQuestion.content}</p>
+                                            </div>
+                                        ) : null;
+                                    })()}
+
                                     <Card variant="gradient" className="p-8">
-                                        <div className="prose prose-invert prose-violet max-w-none">
+                                        {/* Enhanced markdown prose classes */}
+                                        <div className="prose prose-invert prose-violet max-w-none prose-headings:font-bold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-p:text-base prose-p:leading-relaxed prose-li:my-1 prose-ul:space-y-2 prose-ol:space-y-2">
                                             <ReactMarkdown>
                                                 {currentSlide.formatted_content || currentSlide.content}
                                             </ReactMarkdown>
@@ -310,8 +325,8 @@ export default function SessionPage() {
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Input Area */}
-                    <div className="border-t border-slate-800 bg-slate-900/80 backdrop-blur-md p-4">
+                    {/* FIXED: Sticky Input Bar - Always visible at bottom with padding */}
+                    <div className="w-full flex-shrink-0 border-t border-slate-800 bg-slate-900/95 backdrop-blur-md p-4 pb-6">
                         <div className="max-w-4xl mx-auto flex gap-3">
                             <Input
                                 ref={inputRef}
@@ -326,15 +341,7 @@ export default function SessionPage() {
                                 <Send className="w-4 h-4" />
                             </Button>
                         </div>
-                        {messages.length >= 5 && (
-                            <div className="max-w-4xl mx-auto mt-3 flex gap-4">
-                                <Link href={`/quiz/${sessionId}`}>
-                                    <span className="text-sm text-violet-400 hover:text-violet-300 cursor-pointer">
-                                        💡 Ready to test your knowledge? Take a quiz!
-                                    </span>
-                                </Link>
-                            </div>
-                        )}
+
                     </div>
                 </main>
             </div>

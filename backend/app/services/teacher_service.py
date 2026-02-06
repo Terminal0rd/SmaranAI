@@ -29,12 +29,93 @@ class TeacherService:
         subject: str,
         goal: Optional[str],
         user_id: str,
-        db: AsyncSession
+        db: AsyncSession,
+        force_regenerate: bool = False
     ) -> TeacherRoadmap:
         """
         Generate AI-powered learning roadmap for a subject
         Returns 8-15 modules with structured objectives and topics
+        **DETERMINISTIC**: Same subject+goal always generates same modules
         """
+        import hashlib
+        
+        # Create deterministic hash from subject + goal
+        cache_key = f"{subject.lower().strip()}:{goal.lower().strip() if goal else 'general'}"
+        cache_hash = hashlib.md5(cache_key.encode()).hexdigest()
+        
+        logger.info(f"[Roadmap] Requested: {subject} (goal: {goal}) - Hash: {cache_hash[:8]}")
+        
+        # Check if a roadmap already exists for this subject+goal (from ANY user)
+        if not force_regenerate:
+            result = await db.execute(
+                select(TeacherRoadmap)
+                .where(
+                    TeacherRoadmap.subject == subject,
+                    TeacherRoadmap.goal == (goal or None)
+                )
+                .limit(1)
+            )
+            existing_roadmap = result.scalar_one_or_none()
+            
+            if existing_roadmap:
+                logger.info(f"[Roadmap] CACHE HIT - Reusing existing roadmap {existing_roadmap.id}")
+                
+                # Clone the existing roadmap for this user
+                new_roadmap = TeacherRoadmap(
+                    user_id=user_id,
+                    subject=subject,
+                    goal=goal,
+                    total_modules=existing_roadmap.total_modules
+                )
+                db.add(new_roadmap)
+                await db.flush()
+                
+                # Clone modules from existing roadmap
+                modules_result = await db.execute(
+                    select(TeacherModule)
+                    .where(TeacherModule.roadmap_id == existing_roadmap.id)
+                    .order_by(TeacherModule.module_index)
+                )
+                existing_modules = modules_result.scalars().all()
+                
+                for old_module in existing_modules:
+                    # Determine initial status (first module unlocked)
+                    status = ModuleStatus.IN_PROGRESS if old_module.module_index == 0 else ModuleStatus.LOCKED
+                    
+                    new_module = TeacherModule(
+                        roadmap_id=new_roadmap.id,
+                        module_index=old_module.module_index,
+                        title=old_module.title,
+                        level=old_module.level,
+                        objectives=old_module.objectives,
+                        topics=old_module.topics,
+                        prerequisites=old_module.prerequisites,
+                        estimated_minutes=old_module.estimated_minutes,
+                        status=status
+                    )
+                    db.add(new_module)
+                
+                await db.flush()
+                
+                # Create lesson state for first module
+                first_module_result = await db.execute(
+                    select(TeacherModule)
+                    .where(
+                        TeacherModule.roadmap_id == new_roadmap.id,
+                        TeacherModule.module_index == 0
+                    )
+                )
+                first_module = first_module_result.scalar_one_or_none()
+                if first_module:
+                    lesson_state = TeacherLessonState(module_id=first_module.id)
+                    db.add(lesson_state)
+                
+                await db.commit()
+                await db.refresh(new_roadmap)
+                return new_roadmap
+        
+        logger.info(f"[Roadmap] CACHE MISS - Generating new roadmap")
+        
         # Build prompt for AI to generate syllabus
         goal_context = f" for {goal}" if goal else ""
         
@@ -65,11 +146,11 @@ Return ONLY a JSON array with this exact structure:
 Make it progressive: beginner → intermediate → advanced.
 Ensure prerequisites form a valid learning path."""
 
-        # Try to call LLM, but use fallback if it fails/times out
+        # Use hash-based seed for deterministic generation (via temperature = 0.1)
         try:
             response = await llm_service.chat_completion(
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
+                temperature=0.1,  # Low temperature for consistency
                 max_tokens=2000
             )
             
@@ -81,6 +162,7 @@ Ensure prerequisites form a valid learning path."""
                 content = content.split("```")[1].split("```")[0].strip()
             
             modules_data = json.loads(content)
+            logger.info(f"[Roadmap] LLM generated {len(modules_data)} modules")
         except Exception as e:
             # LLM failed - use enhanced fallback
             logger.warning(f"LLM failed to generate roadmap: {e}. Using fallback.")
@@ -143,6 +225,7 @@ Ensure prerequisites form a valid learning path."""
         await db.commit()
         await db.refresh(roadmap)
         
+        logger.info(f"[Roadmap] SUCCESS - Created new roadmap {roadmap.id} with {len(modules_data)} modules")
         return roadmap
     
     def _create_subject_specific_roadmap(self, subject: str, goal: Optional[str]) -> List[Dict]:
@@ -328,11 +411,13 @@ Ensure prerequisites form a valid learning path."""
         except:
             pass
         
-        # Build teaching prompt
+        # Build teaching prompt - Classroom lecture style
         topics_str = "\n".join(f"- {topic}" for topic in module.topics)
         objectives_str = "\n".join(f"- {obj}" for obj in module.objectives)
         
-        prompt = f"""You are a professional teacher teaching: {module.title}
+        prompt = f"""You are a classroom teacher giving a lecture on: {module.title}
+
+**(NO MOTIVATIONAL FLUFF - JUST TEACH)**
 
 Learning Objectives:
 {objectives_str}
@@ -341,33 +426,82 @@ Topics to Cover:
 {topics_str}
 {rag_context}
 
-Create structured CLASS-STYLE teaching content with these sections:
+Your job: EXPLAIN each topic clearly like you're teaching a class.
 
-1. DEFINITIONS: Clear definitions of key terms
-2. KEY CONCEPTS: Main ideas explained simply
-3. EXAMPLES: 2-3 concrete examples
-4. COMMON MISTAKES: What students often get wrong
-5. SUMMARY: 3-4 bullet points recap
+Structure your lecture as JSON:
 
-Use whiteboard/classroom tone: structured, friendly but professional.
-Return as JSON with this structure:
 {{
   "sections": [
-    {{"type": "definition", "title": "Key Definitions", "content": "..."}},
-    {{"type": "concept", "title": "Main Idea", "content": "..."}},
-    {{"type": "example", "title": "Example 1", "content": "..."}},
-    {{"type": "mistake", "title": "Common Mistakes", "content": "..."}},
-    {{"type": "summary", "title": "Summary", "content": "..."}}
+    {{"type": "intro", "title": "Lecture Overview", "content": "In today's class we'll cover: [list topics]. By the end, you'll be able to [state objectives]."}},
+    
+    FOR EACH TOPIC (use type "concept"):
+    {{"type": "concept", "title": "[Topic Name]", "content": "
+      
+      **What is [Topic]?**
+      [Clear definition - 2-3 sentences]
+      
+      **Why does it matter?**
+      [Practical reason - 1-2 sentences]
+      
+      **How it works:**
+      [Step-by-step explanation with numbered steps if possible]
+      [Use simple language, define technical terms]
+    "}},
+    
+    FOR EACH OBJECTIVE (use type "example"):
+    {{"type": "example", "title": "Worked Example: [describe scenario]", "content": "
+      
+      **Problem:** [State the example problem]
+      
+      **Solution:**
+      Step 1: [Action] → [Why we do this]
+      Step 2: [Action] → [Why we do this]
+      Step 3: [Action] → [Result]
+      
+      **Key Insight:** [What makes this work / common error to avoid]
+    "}},
+    
+    {{"type": "mistake", "title": "Common Mistakes", "content": "
+      **Mistake 1:** [What students often do wrong]
+      → Why it happens: [Reason]
+      → Correct approach: [Fix]
+      
+      **Mistake 2:** [Another common error]
+      → Why it happens: [Reason]
+      → Correct approach: [Fix]
+    "}},
+    
+    {{"type": "summary", "title": "Lecture Recap", "content": "
+      Today we covered:
+      1. [Key point with 1-line explanation]
+      2. [Key point with 1-line explanation]
+      3. [Key point with 1-line explanation]
+      4. [Key point with 1-line explanation]
+      5. [Key point with 1-line explanation]
+      
+      Remember: [One critical takeaway]
+    "}}
   ]
-}}"""
+}}
 
-        response = await llm_service.chat_completion(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=1500
-        )
-        
+RULES:
+- NO generic "welcome to learning" text
+- EXPLAIN concepts with definitions + how they work
+- SHOW worked examples with step-by-step solutions
+- POINT OUT common mistakes students make
+- Use clear structure: "What is X? Why? How?"
+- Be precise, not wordy
+"""
+
+        # Try LLM, but use fallback if it fails/times out
         try:
+            response = await llm_service.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6,
+                max_tokens=3500
+            )
+            
+            # Parse JSON response
             content = response.strip()
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -375,12 +509,44 @@ Return as JSON with this structure:
                 content = content.split("```")[1].split("```")[0].strip()
             
             teach_data = json.loads(content)
-        except:
-            # Fallback structure
+            logger.info(f"Successfully generated teach content via LLM for module {module_id}")
+        except Exception as e:
+            # LLM failed or timed out - use detailed fallback
+            logger.warning(f"LLM failed for teach content: {e}. Using fallback.")
+            
+            # Create comprehensive fallback based on module data
             teach_data = {
                 "sections": [
-                    {"type": "definition", "title": "Introduction", "content": f"In this module, we'll learn about {module.title}."},
-                    {"type": "summary", "title": "Key Points", "content": "\n".join(f"- {obj}" for obj in module.objectives)}
+                    {
+                        "type": "intro",
+                        "title": "Introduction",
+                        "content": f"Welcome to {module.title}!\n\nIn this module, we'll explore the fundamentals of {module.title}. This is a {module.level}-level module designed to help you build a strong foundation in this topic."
+                    },
+                    {
+                        "type": "concept",
+                        "title": "What You'll Learn",
+                        "content": "Let's break down the key concepts:\n\n" + "\n\n".join([f"• {obj}" for obj in module.objectives])
+                    },
+                    {
+                        "type": "concept",
+                        "title": "Core Topics",
+                        "content": "We'll cover the following topics in detail:\n\n" + "\n\n".join([f"{i+1}. {topic}\n   Understanding this topic will help you build your knowledge step by step." for i, topic in enumerate(module.topics)])
+                    },
+                    {
+                        "type": "example",
+                        "title": "Practical Application",
+                        "content": f"To master {module.title}, you should:\n• Practice regularly with hands-on exercises\n• Apply these concepts to real-world scenarios\n• Review the material multiple times for better retention"
+                    },
+                    {
+                        "type": "practice",
+                        "title": "How to Practice",
+                        "content": "Here are some tips to get the most out of this module:\n• Take your time to understand each concept\n• Try to explain what you've learned in your own words\n• Ask questions if anything is unclear\n• Review the summary before moving to the check"
+                    },
+                    {
+                        "type": "summary",
+                        "title": "Key Takeaways",
+                        "content": "Remember these important points:\n\n" + "\n".join([f"✓ {obj}" for obj in module.objectives[:5]])
+                    }
                 ]
             }
         
@@ -782,6 +948,86 @@ Card types: concept, formula, mistake, example"""
         await db.commit()
         
         return cards
+    
+    async def answer_teach_question(
+        self,
+        module_id: str,
+        question: str,
+        db: AsyncSession
+    ) -> str:
+        """
+        Answer student's question during teaching phase
+        Uses module content and RAG for context-aware responses
+        """
+        # Get module details
+        result = await db.execute(
+            select(TeacherModule)
+            .where(TeacherModule.id == module_id)
+            .options(selectinload(TeacherModule.roadmap))
+        )
+        module = result.scalar_one()
+        
+        # Get teach content if available
+        lesson_state_result = await db.execute(
+            select(TeacherLessonState).where(TeacherLessonState.module_id == module_id)
+        )
+        lesson_state = lesson_state_result.scalar_one_or_none()
+        
+        teach_context = ""
+        if lesson_state and lesson_state.teach_content:
+            try:
+                teach_data = json.loads(lesson_state.teach_content)
+                # Extract content from sections
+                teach_context = "\n\n".join([
+                    f"{section['title']}: {section['content']}"
+                    for section in teach_data.get('sections', [])
+                ])
+            except:
+                pass
+        
+        # Get RAG context
+        rag_context = ""
+        try:
+            context, _ = await rag_service.get_context_for_query(
+                query=question,
+                subject_id=None,
+                top_k=2
+            )
+            if context:
+                rag_context = f"\n\nReference material:\n{context[:800]}"
+        except:
+            pass
+        
+        # Build prompt for answering
+        prompt = f"""You are a patient, helpful teacher answering a student's question during a lesson on: {module.title}
+
+Module Topics:
+{chr(10).join(f"- {topic}" for topic in module.topics)}
+
+Current Lesson Content:
+{teach_context[:1500] if teach_context else "Not yet available"}
+{rag_context}
+
+Student's Question: {question}
+
+Provide a clear, beginner-friendly answer that:
+1. Directly addresses their question
+2. Relates to the module content
+3. Uses simple language and examples
+4. Is concise but thorough (2-4 paragraphs max)
+5. Encourages further learning
+
+Answer:"""
+
+        response = await llm_service.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=500
+        )
+        
+        return response.strip()
+
+
 
 
 teacher_service = TeacherService()

@@ -71,12 +71,13 @@ class EmbeddingService:
             logger.error(f"Failed to save vector store: {e}")
             raise
     
-    def encode(self, texts: List[str]) -> np.ndarray:
+    def encode(self, texts: List[str], batch_size: int = 10) -> np.ndarray:
         """
-        Encode texts to embeddings
+        Encode texts to embeddings with batch processing
         
         Args:
             texts: List of text strings
+            batch_size: Process this many chunks at a time to avoid memory issues
             
         Returns:
             Numpy array of embeddings
@@ -84,7 +85,15 @@ class EmbeddingService:
         if not texts:
             return np.array([])
         
-        return self.model.encode(texts, convert_to_numpy=True)
+        # Process in batches to avoid memory overflow
+        all_embeddings = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            batch_embeddings = self.model.encode(batch, convert_to_numpy=True, show_progress_bar=False)
+            all_embeddings.append(batch_embeddings)
+            logger.info(f"[Embedding] Processed batch {i//batch_size + 1}/{(len(texts)-1)//batch_size + 1}")
+        
+        return np.vstack(all_embeddings) if all_embeddings else np.array([])
     
     def add_documents(
         self,
@@ -94,7 +103,8 @@ class EmbeddingService:
         filename: str
     ) -> List[str]:
         """
-        Add document chunks to the vector store
+        Add document chunks to the vector store with batch processing
+        **OPTIMIZED**: Processes in batches to prevent memory overflow
         
         Args:
             chunks: List of text chunks
@@ -105,11 +115,18 @@ class EmbeddingService:
         Returns:
             List of embedding IDs
         """
+        import gc
+        
         if not chunks:
             return []
         
-        # Generate embeddings
-        embeddings = self.encode(chunks)
+        logger.info(f"[Embedding] Starting batch embedding for {len(chunks)} chunks")
+        
+        # Generate embeddings in batches (10 chunks at a time)
+        embeddings = self.encode(chunks, batch_size=10)
+        
+        # Force garbage collection after embedding
+        gc.collect()
         
         # Create IDs and metadata
         ids = []
@@ -139,6 +156,11 @@ class EmbeddingService:
         # Save updated store
         self._save_vector_store()
         
+        # Clean up memory
+        del embeddings
+        gc.collect()
+        
+        logger.info(f"[Embedding] Completed - all chunks embedded and saved")
         return ids
     
     def search(

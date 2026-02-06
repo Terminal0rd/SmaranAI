@@ -17,7 +17,8 @@ from app.schemas.teacher import (
     TeachContentResponse, CheckQuestionsResponse,
     CheckSubmission, CheckResultResponse,
     ReteachRequest, ReteachContentResponse,
-    MemoryCardsResponse
+    MemoryCardsResponse,
+    TeachChatRequest, TeachChatResponse
 )
 from app.utils.security import get_current_user
 from app.services.teacher_service import teacher_service
@@ -347,3 +348,35 @@ async def get_memory_cards(
         module_title=module.title,
         cards=cards
     )
+
+
+@router.post("/roadmap/{roadmap_id}/module/{module_id}/chat", response_model=TeachChatResponse)
+async def teach_chat(
+    roadmap_id: str,
+    module_id: str,
+    request: TeachChatRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Interactive Q&A during teaching phase
+    Student can ask questions and get AI-powered answers
+    """
+    # Verify ownership
+    roadmap_result = await db.execute(
+        select(TeacherRoadmap).where(
+            TeacherRoadmap.id == roadmap_id,
+            TeacherRoadmap.user_id == current_user.id
+        )
+    )
+    if not roadmap_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Roadmap not found")
+    
+    # Answer question
+    answer = await teacher_service.answer_teach_question(
+        module_id=module_id,
+        question=request.message,
+        db=db
+    )
+    
+    return TeachChatResponse(response=answer)
