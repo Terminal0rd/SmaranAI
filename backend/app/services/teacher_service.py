@@ -498,7 +498,8 @@ RULES:
             response = await llm_service.chat_completion(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.6,
-                max_tokens=3500
+                max_tokens=3500,
+                bypass_default=True  # Override 800 cap for detailed teaching
             )
             
             # Parse JSON response
@@ -611,7 +612,8 @@ Return as JSON array:
         response = await llm_service.chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.6,
-            max_tokens=1000
+            max_tokens=1000,
+            bypass_default=True  # Need full 1000 for quality questions
         )
         
         try:
@@ -633,6 +635,15 @@ Return as JSON array:
                     "correct_answer": module.objectives[0] if module.objectives else "Option A"
                 }
             ]
+        
+        # Store questions in lesson state to prevent regeneration bug
+        lesson_state_result = await db.execute(
+            select(TeacherLessonState).where(TeacherLessonState.module_id == module_id)
+        )
+        lesson_state = lesson_state_result.scalar_one_or_none()
+        if lesson_state:
+            lesson_state.check_questions = questions
+            await db.commit()
         
         return questions
     
@@ -1026,8 +1037,156 @@ Answer:"""
         )
         
         return response.strip()
+    
+    async def generate_topic_content(
+        self,
+        module_id: str,
+        topic_index: int,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Generate detailed teaching content for a SINGLE topic
+        More focused and in-depth than teaching all topics at once
+        """
+        # Get module
+        result = await db.execute(
+            select(TeacherModule).where(TeacherModule.id == module_id)
+        )
+        module = result.scalar_one()
+        
+        if topic_index >= len(module.topics):
+            raise ValueError(f"Topic index {topic_index} out of range")
+        
+        topic = module.topics[topic_index]
+        
+        # Build focused prompt for single topic
+        objectives_str = "\n".join(f"- {obj}" for obj in module.objectives)
+        
+        prompt = f"""You are teaching the topic: "{topic}" from the module "{module.title}"
 
+Module Objectives:
+{objectives_str}
 
+Your job: Explain "{topic}" in depth like a professor would in a lecture.
+
+Structure your explanation as JSON:
+
+{{
+  "topic_name": "{topic}",
+  "sections": [
+    {{"type": "definition", "title": "What is {topic}?", "content": "[3-4 sentences clearly defining the concept]"}},
+    {{"type": "importance", "title": "Why {topic} Matters", "content": "[2-3 sentences on real-world relevance]"}},
+    {{"type": "explanation", "title": "How {topic} Works", "content": "[Detailed breakdown with core concepts, step-by-step process, technical details]"}},
+    {{"type": "example", "title": "Concrete Example", "content": "[Worked example with Problem/Solution/Code]"}},
+    {{"type": "mistakes", "title": "Common Mistakes", "content": "[2-3 errors students make with fixes]"}},
+    {{"type": "practice", "title": "Practice Exercise", "content": "[Actionable exercise to try now]"}}
+  ]
+}}
+
+RULES: Be detailed, use clear language, include code/formula examples, point out errors."""
+        
+        try:
+            response = await llm_service.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6,
+                max_tokens=2000,
+                bypass_default=True
+            )
+            
+            content = response.strip()
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            topic_data = json.loads(content)
+            logger.info(f"Generated content for topic {topic_index}: {topic}")
+            
+        except Exception as e:
+            logger.warning(f"LLM failed for topic: {e}. Using fallback.")
+            topic_data = {
+                "topic_name": topic,
+                "sections": [
+                    {"type": "definition", "title": f"Understanding {topic}", "content": f"{topic} is fundamental in {module.title}."},
+                    {"type": "explanation", "title": "Key Points", "content": f"Focus on core principles of {topic}."},
+                    {"type": "practice", "title": "Next Steps", "content": f"Explain {topic} in your own words."}
+                ]
+            }
+        
+        return topic_data
+    
+    async def complete_topic(
+        self,
+        module_id: str,
+        topic_index: int,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """Mark topic completed, return next topic info"""
+        result = await db.execute(
+            select(TeacherLessonState).where(TeacherLessonState.module_id == module_id)
+        )
+        lesson_state = result.scalar_one_or_none()
+        
+        if not lesson_state:
+            raise ValueError("Lesson state not found")
+        
+        module_result = await db.execute(
+            select(TeacherModule).where(TeacherModule.id == module_id)
+        )
+        module = module_result.scalar_one()
+        total_topics = len(module.topics)
+        
+        completed = lesson_state.topics_completed or []
+        if topic_index not in completed:
+            completed.append(topic_index)
+            lesson_state.topics_completed = completed
+        
+        next_index = topic_index + 1
+        all_completed = next_index >= total_topics
+        
+        if not all_completed:
+            lesson_state.current_topic_index = next_index
+        else:
+            lesson_state.current_phase = LessonPhase.CHECK
+        
+        await db.commit()
+        
+        return {
+            "next_topic_index": next_index if not all_completed else None,
+            "all_completed": all_completed,
+            "total_topics": total_topics,
+            "topics_completed": len(completed)
+        }
+    
+    async def answer_topic_question(
+        self,
+        module_id: str,
+        topic_index: int,
+        question: str,
+        db: AsyncSession
+    ) -> str:
+        """Answer student question about current topic"""
+        result = await db.execute(
+            select(TeacherModule).where(TeacherModule.id == module_id)
+        )
+        module = result.scalar_one()
+        
+        if topic_index >= len(module.topics):
+            return "Invalid topic index"
+        
+        topic = module.topics[topic_index]
+        
+        prompt = f"""Student learning "{topic}" (from {module.title}) asked: "{question}"
+
+Provide a clear answer (3-5 sentences) that directly addresses the question with simple language and examples."""
+        
+        response = await llm_service.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+            max_tokens=500
+        )
+        
+        return response
 
 
 teacher_service = TeacherService()

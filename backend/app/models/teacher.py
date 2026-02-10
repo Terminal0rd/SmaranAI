@@ -111,6 +111,11 @@ class TeacherLessonState(Base):
     # Generated content cache (to avoid regenerating)
     teach_content = Column(Text, nullable=True)
     reteach_content = Column(Text, nullable=True)
+    check_questions = Column(JSON, nullable=True)  # Store generated questions
+    
+    # Topic progression tracking
+    current_topic_index = Column(Integer, nullable=False, default=0)
+    topics_completed = Column(JSON, nullable=True)  # List of completed topic indices
     
     last_updated = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

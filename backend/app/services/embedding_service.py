@@ -71,7 +71,7 @@ class EmbeddingService:
             logger.error(f"Failed to save vector store: {e}")
             raise
     
-    def encode(self, texts: List[str], batch_size: int = 10) -> np.ndarray:
+    def encode(self, texts: List[str], batch_size: int = 5) -> np.ndarray:
         """
         Encode texts to embeddings with batch processing
         
@@ -122,8 +122,8 @@ class EmbeddingService:
         
         logger.info(f"[Embedding] Starting batch embedding for {len(chunks)} chunks")
         
-        # Generate embeddings in batches (10 chunks at a time)
-        embeddings = self.encode(chunks, batch_size=10)
+        # Generate embeddings in batches (5 chunks at a time for faster processing)
+        embeddings = self.encode(chunks, batch_size=5)
         
         # Force garbage collection after embedding
         gc.collect()

@@ -255,9 +255,17 @@ async def submit_check_answers(
     if not roadmap_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Roadmap not found")
     
-    # Get the questions (they should be stored in the frontend state)
-    # For now, we'll need to regenerate them or get from session
-    questions = await teacher_service.generate_check_questions(module_id, db)
+    # Get stored questions from lesson state to avoid regeneration bug
+    lesson_state_result = await db.execute(
+        select(TeacherLessonState).where(TeacherLessonState.module_id == module_id)
+    )
+    lesson_state = lesson_state_result.scalar_one_or_none()
+    
+    # Use stored questions if available, otherwise regenerate (backward compat)
+    if lesson_state and lesson_state.check_questions:
+        questions = lesson_state.check_questions
+    else:
+        questions = await teacher_service.generate_check_questions(module_id, db)
     
     # Grade answers
     score, passed, weak_topics, grading_details = await teacher_service.grade_check_answers(

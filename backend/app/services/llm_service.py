@@ -17,14 +17,15 @@ class LLMService:
     
     def __init__(self):
         self.base_url = settings.llm_server_url.rstrip('/')
-        self.max_tokens = settings.llm_max_tokens
+        self.max_tokens = 800  # Reduced from 2000 for faster responses
     
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,
-        temperature: float = 0.7,
-        stop: Optional[List[str]] = None
+        temperature: float = 0.4,  # Reduced from 0.7 for faster sampling
+        stop: Optional[List[str]] = None,
+        bypass_default: bool = False  # Override cap for teacher mode
     ) -> str:
         """
         Call the LLM using OpenAI-compatible chat completions API
@@ -45,7 +46,7 @@ class LLMService:
                     json={
                         "model": "phi-3",
                         "messages": messages,
-                        "max_tokens": max_tokens or self.max_tokens,
+                        "max_tokens": max_tokens if bypass_default else (max_tokens or self.max_tokens),
                         "temperature": temperature,
                         "stop": stop or [],
                         "stream": False
@@ -138,7 +139,7 @@ Please provide a clear, educational whiteboard-style response."""
             {"role": "user", "content": f"Extract the key learning concepts from this educational content:\n\n{text}\n\nCONCEPTS:"}
         ]
         
-        response = await self.chat_completion(messages, max_tokens=200, temperature=0.3)
+        response = await self.chat_completion(messages, max_tokens=100, temperature=0.2)
         
         # Parse comma-separated concepts
         concepts = [c.strip() for c in response.split(",") if c.strip()]
@@ -251,7 +252,7 @@ Remember:
             {"role": "user", "content": user_prompt}
         ]
         
-        return await self.chat_completion(messages, max_tokens=1000, temperature=0.4)
+        return await self.chat_completion(messages, max_tokens=600, temperature=0.3)
     
     async def generate_youtube_keywords(
         self,

@@ -1,7 +1,11 @@
 #to start llm server
 Command cd E:\llama
 
-llama-server.exe --model E:\llama\models\Phi-3-mini-4k-instruct-q4.gguf
+# GPU-accelerated (2-3x faster if you have NVIDIA GPU)
+llama-server.exe --model E:\llama\models\Phi-3-mini-4k-instruct-q4.gguf -ngl 33 --n-gpu-layers 33
+
+# CPU-only (fallback if GPU unavailable)
+# llama-server.exe --model E:\llama\models\Phi-3-mini-4k-instruct-q4.gguf
 
 #to start frontend
 
