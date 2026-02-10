@@ -62,34 +62,38 @@ async def process_document(
             
             logger.info(f"[PDF Processing] Extracted {len(text)} characters")
             
-            # CRITICAL: Limit text size BEFORE chunking to prevent MemoryError
-            # Using aggressive limit for low-memory laptops
-            MAX_TEXT_SIZE = 30000  # 30K chars - good balance
-            if len(text) > MAX_TEXT_SIZE:
-                logger.warning(f"[PDF Processing] Text too large ({len(text)} chars) - truncating to {MAX_TEXT_SIZE} chars")
-                text = text[:MAX_TEXT_SIZE]
+            # NO TRUNCATION - Process entire PDF for maximum accuracy
+            # User wants full accuracy, not speed
             
-            # Use SIMPLE chunking to avoid memory issues
-            # No overlap, no fancy sentence detection - just split every 400 chars
+            # Smart chunking with overlap for better context preservation
             try:
-                logger.info(f"[PDF Processing] Starting simple chunking...")
-                chunk_size = 400
+                logger.info(f"[PDF Processing] Starting smart chunking with overlap...")
+                
+                chunk_size = 800  # Larger chunks for better context
+                overlap = 100     # Overlap to preserve context between chunks
                 chunks = []
                 
-                # Simple split - much more memory efficient
-                for i in range(0, len(text), chunk_size):
-                    chunk = text[i:i + chunk_size].strip()
-                    if chunk and len(chunk) > 50:  # Only keep meaningful chunks
+                # Overlapping chunks for better RAG accuracy
+                start = 0
+                while start < len(text):
+                    end = min(start + chunk_size, len(text))
+                    chunk = text[start:end].strip()
+                    
+                    # Keep chunks with meaningful content (>100 chars)
+                    if chunk and len(chunk) > 100:
                         chunks.append(chunk)
                     
-                    # Log progress every 20 chunks
-                    if len(chunks) % 20 == 0:
+                    # Move forward by (chunk_size - overlap)
+                    start += (chunk_size - overlap)
+                    
+                    # Log progress
+                    if len(chunks) % 50 == 0:
                         logger.info(f"[PDF Processing] Chunked {len(chunks)} pieces so far...")
                 
-                logger.info(f"[PDF Processing] Created {len(chunks)} chunks")
+                logger.info(f"[PDF Processing] Created {len(chunks)} chunks from {len(text)} characters")
                 
             except MemoryError:
-                logger.error(f"[PDF Processing] FAILED - Out of memory. Close other applications and try again.")
+                logger.error(f"[PDF Processing] FAILED - Out of memory")
                 return
             except Exception as e:
                 logger.error(f"[PDF Processing] FAILED - Chunking error: {e}")
@@ -151,13 +155,20 @@ async def upload_document(
     import logging
     logger = logging.getLogger(__name__)
     
+    logger.info(f"[UPLOAD] Received upload request for file: {file.filename}")
+    logger.info(f"[UPLOAD] Subject ID provided: {subject_id}")
+    
     # Validate file type
     if not file.filename.lower().endswith('.pdf'):
+        logger.error(f"[UPLOAD] Invalid file type: {file.filename}")
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
+    logger.info(f"[UPLOAD] Reading file content...")
     # Read file content
     content = await file.read()
     file_size = len(content)
+    
+    logger.info(f"[UPLOAD] File size: {file_size} bytes ({file_size / 1024 / 1024:.2f} MB)")
     
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(
@@ -255,6 +266,8 @@ async def upload_document(
         subject_id,
         file.filename
     )
+    
+    logger.info(f"[UPLOAD] SUCCESS - Document created with ID: {document.id}, starting background processing")
     
     return DocumentUploadResponse.model_validate(document)
 

@@ -76,17 +76,14 @@ export default function UploadPage() {
     };
 
     const uploadFile = async (file: File) => {
-        // Subject is now optional - backend will auto-classify if not provided
-
+        // Subject is now optional - backend will auto-classify
+        // Validate file type
         if (!file.name.toLowerCase().endsWith('.pdf')) {
             toast.error('Only PDF files are allowed');
             return;
         }
 
-        if (file.size > 10 * 1024 * 1024) {
-            toast.error('File size must be less than 10MB');
-            return;
-        }
+        // File size validation removed - handled by backend (500MB limit)
 
         setUploading(true);
         try {
@@ -212,7 +209,7 @@ export default function UploadPage() {
                                         Drop your PDF here or click to browse
                                     </p>
                                     <p className="text-sm text-slate-400">
-                                        Maximum file size: 10MB
+                                        Maximum file size: 500MB
                                     </p>
                                 </>
                             )}

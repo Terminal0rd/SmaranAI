@@ -1,5 +1,5 @@
 """
-LLM service for Phi-3 integration via OpenAI-compatible API
+LLM service for Qwen 2.5 (7B) integration via Ollama - Balanced for Quality & Speed
 """
 import httpx
 from typing import Optional, List, Dict, Any
@@ -13,17 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class LLMService:
-    """Service for interacting with local Phi-3 LLM server via OpenAI-compatible API"""
+    """Service for interacting with Ollama (Qwen 2.5 7B) via OpenAI-compatible API"""
     
     def __init__(self):
         self.base_url = settings.llm_server_url.rstrip('/')
-        self.max_tokens = 800  # Reduced from 2000 for faster responses
+        self.max_tokens = 600  # Balanced for quality and speed
     
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,
-        temperature: float = 0.4,  # Reduced from 0.7 for faster sampling
+        temperature: float = 0.3,  # Balanced for quality and consistency
         stop: Optional[List[str]] = None,
         bypass_default: bool = False  # Override cap for teacher mode
     ) -> str:
@@ -44,7 +44,7 @@ class LLMService:
                 response = await client.post(
                     f"{self.base_url}/v1/chat/completions",
                     json={
-                        "model": "phi-3",
+                        "model": "qwen2.5:7b-instruct",
                         "messages": messages,
                         "max_tokens": max_tokens if bypass_default else (max_tokens or self.max_tokens),
                         "temperature": temperature,
@@ -252,7 +252,7 @@ Remember:
             {"role": "user", "content": user_prompt}
         ]
         
-        return await self.chat_completion(messages, max_tokens=600, temperature=0.3)
+        return await self.chat_completion(messages, max_tokens=500, temperature=0.3)
     
     async def generate_youtube_keywords(
         self,
@@ -265,7 +265,7 @@ Remember:
             {"role": "user", "content": f"Generate 5 YouTube search queries to find educational videos about:\nSubject: {subject}\nTopic: {topic}"}
         ]
         
-        response = await self.chat_completion(messages, max_tokens=200, temperature=0.5)
+        response = await self.chat_completion(messages, max_tokens=100, temperature=0.3)
         queries = [q.strip() for q in response.strip().split("\n") if q.strip()]
         return queries[:5]
     
@@ -281,7 +281,7 @@ Remember:
             {"role": "user", "content": f"CONVERSATION:\n{conversation}"}
         ]
         
-        return await self.chat_completion(chat_messages, max_tokens=200, temperature=0.3)
+        return await self.chat_completion(chat_messages, max_tokens=150, temperature=0.2)
     
     async def health_check(self) -> bool:
         """Check if LLM server is healthy"""

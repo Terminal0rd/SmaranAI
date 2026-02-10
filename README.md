@@ -19,7 +19,7 @@
 
 ## 🛠️ Tech Stack
 
-**Backend:** FastAPI, SQLAlchemy (async), JWT Auth, SentenceTransformers, Phi-3 LLM
+**Backend:** FastAPI, SQLAlchemy (async), JWT Auth, SentenceTransformers, Qwen 2.5 LLM via Ollama
 
 **Frontend:** Next.js 14, TailwindCSS, Framer Motion, ReactFlow, Recharts
 
@@ -28,12 +28,15 @@
 ### Prerequisites
 - Python 3.10+
 - Node.js 18+
-- llama-server with Phi-3 model
+- Ollama with Qwen 2.5 model
 
 ### 1. Start LLM Server
 ```bash
-cd D:\llama
-llama-server.exe -m models\Phi-3*.gguf --port 8080
+# Pull the model (one-time setup)
+ollama pull qwen2.5:7b-instruct
+
+# Start Ollama (it runs as a service, or use:)
+ollama serve
 ```
 
 ### 2. Start Backend
@@ -103,4 +106,4 @@ Educational project - All rights reserved
 
 ---
 
-Built with ❤️ using FastAPI + Next.js + Phi-3
+Built with ❤️ using FastAPI + Next.js + Qwen 2.5 (Ollama)

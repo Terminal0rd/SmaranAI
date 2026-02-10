@@ -16,15 +16,15 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440  # 24 hours
     
-    # LLM Server (OpenAI-compatible API)
-    llm_server_url: str = "http://127.0.0.1:8080"
-    llm_max_tokens: int = 1024
+    # LLM Server (Ollama with Qwen 2.5)
+    llm_server_url: str = "http://127.0.0.1:11434"
+    llm_max_tokens: int = 600
     
     # Embeddings
     embedding_model: str = "all-MiniLM-L6-v2"
     
     # File Upload
-    max_upload_size_mb: int = 10
+    max_upload_size_mb: int = 500  # Allow large PDF uploads
     upload_dir: str = "storage/uploads"
     
     # Vector Store (GLOBAL - shared across all users)

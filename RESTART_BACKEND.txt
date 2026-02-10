@@ -1,0 +1,11 @@
+RESTART BACKEND TO APPLY 500MB UPLOAD LIMIT
+
+The config file has been changed from 10MB to 500MB, but FastAPI needs to be restarted to load the new settings.
+
+STEPS:
+1. Stop your current backend (Ctrl+C in the terminal running uvicorn)
+2. Start it again:
+   cd backend
+   uvicorn app.main:app --reload
+
+The new 500MB limit will then be active.

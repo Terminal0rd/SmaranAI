@@ -55,20 +55,57 @@ class EmbeddingService:
         }
     
     def _save_vector_store(self):
-        """Save vector store to disk"""
-        # Ensure directory exists
+        """Save vector store to disk with atomic write (backup + replace)"""
+        import pickle
+        import tempfile
+        from pathlib import Path
+        
+        # Create parent directory if needed
         self.vector_store_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Create backup
-        if self.vector_store_path.exists():
-            backup_path = self.vector_store_path.with_suffix('.pkl.bak')
-            self.vector_store_path.rename(backup_path)
-        
+        # Write to temp file first
+        temp_path = self.vector_store_path.with_suffix('.tmp')
         try:
-            with open(self.vector_store_path, 'wb') as f:
+            with open(temp_path, 'wb') as f:
                 pickle.dump(self._vector_store, f)
         except Exception as e:
-            logger.error(f"Failed to save vector store: {e}")
+            logger.error(f"Failed to write to temporary vector store file: {e}")
+            # Clean up temp file if creation failed
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
+        
+        # Backup old file if it exists
+        if self.vector_store_path.exists():
+            backup_path = self.vector_store_path.with_suffix('.pkl.bak')
+            # Delete old backup if it exists (Windows fix)
+            if backup_path.exists():
+                try:
+                    backup_path.unlink()
+                except Exception as e:
+                    logger.warning(f"Could not delete old backup file {backup_path}: {e}")
+            try:
+                self.vector_store_path.rename(backup_path)
+            except Exception as e:
+                logger.error(f"Failed to rename existing vector store to backup: {e}")
+                # Clean up temp file as we can't complete the atomic write
+                if temp_path.exists():
+                    temp_path.unlink()
+                raise
+        
+        # Move temp to final location
+        try:
+            temp_path.rename(self.vector_store_path)
+        except Exception as e:
+            logger.error(f"Failed to rename temporary vector store to final location: {e}")
+            # If rename fails, try to restore from backup if it exists
+            backup_path = self.vector_store_path.with_suffix('.pkl.bak')
+            if backup_path.exists():
+                try:
+                    backup_path.rename(self.vector_store_path)
+                    logger.info("Restored vector store from backup due to failed rename.")
+                except Exception as restore_e:
+                    logger.error(f"Failed to restore vector store from backup: {restore_e}")
             raise
     
     def encode(self, texts: List[str], batch_size: int = 5) -> np.ndarray:

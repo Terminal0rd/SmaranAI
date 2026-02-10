@@ -7,7 +7,7 @@ import uuid
 import logging
 from typing import List, Dict, Any, Tuple, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.models.teacher import (
@@ -415,9 +415,7 @@ Ensure prerequisites form a valid learning path."""
         topics_str = "\n".join(f"- {topic}" for topic in module.topics)
         objectives_str = "\n".join(f"- {obj}" for obj in module.objectives)
         
-        prompt = f"""You are a classroom teacher giving a lecture on: {module.title}
-
-**(NO MOTIVATIONAL FLUFF - JUST TEACH)**
+        prompt = f"""You are an excellent teacher creating a BEGINNER-FRIENDLY introduction to: {module.title}
 
 Learning Objectives:
 {objectives_str}
@@ -426,71 +424,87 @@ Topics to Cover:
 {topics_str}
 {rag_context}
 
-Your job: EXPLAIN each topic clearly like you're teaching a class.
-
-Structure your lecture as JSON:
+Create a clear, engaging JSON lecture with NO FILLER or generic motivational text.
 
 {{
   "sections": [
-    {{"type": "intro", "title": "Lecture Overview", "content": "In today's class we'll cover: [list topics]. By the end, you'll be able to [state objectives]."}},
+    {{"type": "intro", "title": "What We'll Learn Today", "content": "
+      By the end of this lesson, you will be able to:
+      • **Explain** [specific concept with measurable understanding]
+      • **Identify** [concrete element students will recognize]
+      • **Apply** [practical skill they'll gain]
+      
+      Real-world connection: [ONE relatable analogy showing why this matters - e.g., 'Variables are like labeled boxes where you store information']
+    "}},
     
-    FOR EACH TOPIC (use type "concept"):
+    FOR EACH TOPIC (type: "concept"):
     {{"type": "concept", "title": "[Topic Name]", "content": "
       
       **What is [Topic]?**
-      [Clear definition - 2-3 sentences]
+      [Clear 2-sentence definition in simple language]
       
-      **Why does it matter?**
-      [Practical reason - 1-2 sentences]
+      **Real-world analogy:**
+      [One concrete comparison - e.g., 'Think of it like...']
       
       **How it works:**
-      [Step-by-step explanation with numbered steps if possible]
-      [Use simple language, define technical terms]
+      1. [First step with plain explanation]
+      2. [Second step - what happens and why]
+      3. [Third step - the result]
+      
+      **Simple example:**
+      ```
+      [Minimal concrete example - pseudo-code or conceptual]
+      [Show input → process → output]
+      ```
+      
+      **Key insight:** [ONE critical thing to remember]
     "}},
     
-    FOR EACH OBJECTIVE (use type "example"):
-    {{"type": "example", "title": "Worked Example: [describe scenario]", "content": "
+    {{"type": "example", "title": "Practical Example: [Specific Scenario]", "content": "
       
-      **Problem:** [State the example problem]
+      **Problem:** [Concrete, relatable problem]
       
       **Solution:**
-      Step 1: [Action] → [Why we do this]
-      Step 2: [Action] → [Why we do this]
-      Step 3: [Action] → [Result]
+      Step 1: [Action] → [Plain language: why this helps]
+      Step 2: [Action] → [Plain language: what changes]
+      Step 3: [Action] → [Plain language: the outcome]
       
-      **Key Insight:** [What makes this work / common error to avoid]
+      **Why this works:** [Explain the principle, not just what]
     "}},
     
-    {{"type": "mistake", "title": "Common Mistakes", "content": "
-      **Mistake 1:** [What students often do wrong]
-      → Why it happens: [Reason]
-      → Correct approach: [Fix]
+    {{"type": "mistake", "title": "Common Beginner Mistakes", "content": "
+      ❌ **Mistake:** [What students do wrong]
+      → **Why:** [Misconception or confusion]
+      → **Fix:** [Correct approach in simple terms]
       
-      **Mistake 2:** [Another common error]
-      → Why it happens: [Reason]
-      → Correct approach: [Fix]
+      ❌ **Mistake:** [Another error]
+      → **Why:** [Root cause]
+      → **Fix:** [Right way to think about it]
     "}},
     
-    {{"type": "summary", "title": "Lecture Recap", "content": "
-      Today we covered:
-      1. [Key point with 1-line explanation]
-      2. [Key point with 1-line explanation]
-      3. [Key point with 1-line explanation]
-      4. [Key point with 1-line explanation]
-      5. [Key point with 1-line explanation]
+    {{"type": "summary", "title": "Key Takeaways", "content": "
+      ✓ [Specific concept]: [One-line actionable summary]
+      ✓ [Specific skill]: [What you can now do]
+      ✓ [Specific principle]: [Core understanding gained]
       
-      Remember: [One critical takeaway]
+      💡 **Remember:** [One memorable insight connecting everything]
     "}}
   ]
 }}
 
-RULES:
-- NO generic "welcome to learning" text
-- EXPLAIN concepts with definitions + how they work
-- SHOW worked examples with step-by-step solutions
-- POINT OUT common mistakes students make
-- Use clear structure: "What is X? Why? How?"
-- Be precise, not wordy
+STRICT RULES:
+✓ Use SPECIFIC, MEASURABLE language (explain, identify, apply, create)
+✓ Include 1-2 REAL-WORLD ANALOGIES per topic
+✓ Add SIMPLE illustrative examples (not complex code)
+✓ Define technical terms in PLAIN LANGUAGE
+✓ Structure: What? Analogy, How? Example, Gotcha
+✓ Emojis: MAX 3 total, only for visual markers
+✗ NO generic "welcome" or "excited to learn" text
+✗ NO repetitive phrases or filler
+✗ NO marketing language
+✗ NO unexplained jargon
+
+TONE: Friendly teacher explaining to a curious beginner. Clear, practical, memorable.
 """
 
         # Try LLM, but use fallback if it fails/times out
@@ -568,55 +582,54 @@ RULES:
         db: AsyncSession
     ) -> List[Dict[str, Any]]:
         """
-        Generate 2-5 check questions to verify mastery
-        Mix of MCQ and short answer
+        Generate 10 MCQ questions to test understanding
+        All questions are multiple choice for easy grading
         """
-        # Get module
         result = await db.execute(
             select(TeacherModule).where(TeacherModule.id == module_id)
         )
         module = result.scalar_one()
         
+        topics_str = ", ".join(module.topics)
         objectives_str = "\n".join(f"- {obj}" for obj in module.objectives)
-        topics_str = "\n".join(f"- {topic}" for topic in module.topics)
         
-        prompt = f"""Create 4 check questions for: {module.title}
+        prompt = f"""Generate 10 multiple-choice questions to test understanding of: {module.title}
 
-Learning Objectives:
+Topics covered: {topics_str}
+
+Learning objectives:
 {objectives_str}
 
-Topics Covered:
-{topics_str}
+Requirements:
+- Create 10 MCQ questions
+- Each question should test a different concept/topic
+- Mix difficulty: 4 easy, 4 medium, 2 hard
+- 4 options per question (A, B, C, D)
+- Only ONE correct answer per question
+- Make distractors plausible but clearly wrong
 
-Generate:
-- 2 MCQ questions (4 options each, one correct)
-- 2 short answer questions
-
-Return as JSON array:
+Return JSON array:
 [
   {{
-    "question_id": "q1",
-    "question_type": "mcq",
-    "question_text": "Question here?",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correct_answer": "Option A"
+    "question": "What is a variable in programming?",
+    "options": ["A container for data", "A mathematical formula", "A type of loop", "A function"],
+    "correct_answer": "A container for data",
+    "difficulty": "easy"
   }},
-  {{
-    "question_id": "q2",
-    "question_type": "short_answer",
-    "question_text": "Explain...",
-    "correct_answer": "Expected answer outline"
-  }}
-]"""
+  ...
+]
 
-        response = await llm_service.chat_completion(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.6,
-            max_tokens=1000,
-            bypass_default=True  # Need full 1000 for quality questions
-        )
-        
+Generate exactly 10 questions."""
+
+        # Try LLM, but use fallback if it fails/times out
         try:
+            response = await llm_service.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6,
+                max_tokens=1000,
+                bypass_default=True  # Need full 1000 for quality questions
+            )
+        
             content = response.strip()
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -780,12 +793,13 @@ Is the student's answer correct? Reply with ONLY 'YES' or 'NO' and a brief feedb
         roadmap = roadmap_result.scalar_one()
         
         completed_count = await db.scalar(
-            select(TeacherModule)
+            select(func.count())
+            .select_from(TeacherModule)
             .where(
                 TeacherModule.roadmap_id == roadmap.id,
                 TeacherModule.status == ModuleStatus.MASTERED
             )
-        )
+        ) or 0
         
         roadmap.completed_modules = completed_count
         roadmap.overall_progress = completed_count / roadmap.total_modules if roadmap.total_modules > 0 else 0
