@@ -1,5 +1,5 @@
 """
-LLM service for Qwen 2.5 (7B) integration via Ollama - Balanced for Quality & Speed
+LLM service for Qwen 2.5 (7B) - Optimized for GTX 1650 (4GB VRAM)
 """
 import httpx
 from typing import Optional, List, Dict, Any
@@ -13,11 +13,12 @@ logger = logging.getLogger(__name__)
 
 
 class LLMService:
-    """Service for interacting with Ollama (Qwen 2.5 7B) via OpenAI-compatible API"""
+    """Service for interacting with Ollama (Qwen 2.5 7B) - GTX 1650 optimized"""
     
     def __init__(self):
         self.base_url = settings.llm_server_url.rstrip('/')
-        self.max_tokens = 600  # Balanced for quality and speed
+        self.max_tokens = 350  # Optimized for 4GB VRAM GPU
+        self.context_window = 2048  # Limited for GPU memory
     
     async def chat_completion(
         self,
@@ -40,7 +41,7 @@ class LLMService:
             Generated text
         """
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:  # 5 minutes timeout
+            async with httpx.AsyncClient(timeout=120.0) as client:  # 2 minutes timeout
                 response = await client.post(
                     f"{self.base_url}/v1/chat/completions",
                     json={
@@ -49,7 +50,8 @@ class LLMService:
                         "max_tokens": max_tokens if bypass_default else (max_tokens or self.max_tokens),
                         "temperature": temperature,
                         "stop": stop or [],
-                        "stream": False
+                        "stream": False,
+                        "num_ctx": self.context_window  # GPU memory optimization
                     },
                     headers={"Content-Type": "application/json"}
                 )
@@ -99,26 +101,19 @@ class LLMService:
         if cached_response:
             return cached_response
         
-        system_prompt = """You are an expert AI tutor helping a student learn. Create clear, educational responses in a "whiteboard" style.
+        system_prompt = "You are an AI tutor. Provide clear, concise educational responses with bullet points and examples."
 
-FORMAT YOUR RESPONSE AS STRUCTURED NOTES:
-- Use clear headings with ## for main topics
-- Use bullet points for key concepts
-- Include examples where helpful
-- Add formulas in LaTeX format ($...$) if mathematical
-- Keep explanations clear and progressive
-- Be thorough but concise"""
+        # Limit context size for GPU memory
+        context_limited = (context[:500] + "...") if len(context) > 500 else context
+        summary_limited = (session_summary[:200] + "...") if len(session_summary) > 200 else session_summary
+        
+        user_prompt = f"""CONTEXT: {context_limited if context_limited else "None"}
 
-        user_prompt = f"""CONTEXT FROM KNOWLEDGE BASE:
-{context if context else "No additional context available."}
+PREVIOUS: {summary_limited if summary_limited else "Start of session"}
 
-PREVIOUS CONVERSATION SUMMARY:
-{session_summary if session_summary else "This is the start of the session."}
+QUESTION: {question}
 
-STUDENT'S QUESTION:
-{question}
-
-Please provide a clear, educational whiteboard-style response."""
+Provide a clear, educational response."""
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -139,7 +134,7 @@ Please provide a clear, educational whiteboard-style response."""
             {"role": "user", "content": f"Extract the key learning concepts from this educational content:\n\n{text}\n\nCONCEPTS:"}
         ]
         
-        response = await self.chat_completion(messages, max_tokens=100, temperature=0.2)
+        response = await self.chat_completion(messages, max_tokens=50, temperature=0.2)
         
         # Parse comma-separated concepts
         concepts = [c.strip() for c in response.split(",") if c.strip()]
@@ -252,7 +247,7 @@ Remember:
             {"role": "user", "content": user_prompt}
         ]
         
-        return await self.chat_completion(messages, max_tokens=500, temperature=0.3)
+        return await self.chat_completion(messages, max_tokens=300, temperature=0.3)
     
     async def generate_youtube_keywords(
         self,
@@ -265,7 +260,7 @@ Remember:
             {"role": "user", "content": f"Generate 5 YouTube search queries to find educational videos about:\nSubject: {subject}\nTopic: {topic}"}
         ]
         
-        response = await self.chat_completion(messages, max_tokens=100, temperature=0.3)
+        response = await self.chat_completion(messages, max_tokens=50, temperature=0.3)
         queries = [q.strip() for q in response.strip().split("\n") if q.strip()]
         return queries[:5]
     
@@ -281,7 +276,7 @@ Remember:
             {"role": "user", "content": f"CONVERSATION:\n{conversation}"}
         ]
         
-        return await self.chat_completion(chat_messages, max_tokens=150, temperature=0.2)
+        return await self.chat_completion(chat_messages, max_tokens=100, temperature=0.2)
     
     async def health_check(self) -> bool:
         """Check if LLM server is healthy"""

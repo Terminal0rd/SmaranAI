@@ -131,11 +131,11 @@ class RAGService:
         Returns:
             Tuple of (response, formatted_response, sources, concepts)
         """
-        # Get RAG context
+        # Get RAG context (reduced for GPU optimization)
         context, sources = await self.get_context_for_query(
             question, 
             subject_id=subject_id,
-            top_k=5
+            top_k=2  # Reduced from 5 for faster processing
         )
         
         # Get session summary

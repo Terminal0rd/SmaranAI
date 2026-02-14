@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # LLM Server (Ollama with Qwen 2.5)
     llm_server_url: str = "http://127.0.0.1:11434"
-    llm_max_tokens: int = 600
+    llm_max_tokens: int = 350
     
     # Embeddings
     embedding_model: str = "all-MiniLM-L6-v2"
