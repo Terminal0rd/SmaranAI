@@ -290,26 +290,87 @@ class QuizService:
         return content
     
     def _validate_quiz_json(self, raw_json: str, expected_count: int) -> List[dict]:
-        """Parse and validate quiz JSON with STRICT checks"""
+        """Parse and validate quiz JSON with STRICT checks and ROBUST parsing"""
         import re
         
-        # Extract JSON from markdown code blocks if present
-        json_match = re.search(r'```(?:json)?\s*({[\s\S]*?})\s*```', raw_json)
-        if json_match:
-            raw_json = json_match.group(1)
+        # ROBUST JSON PARSING: Multiple strategies
+        parsed_data = None
         
-        # Try to find JSON object in response
-        if not raw_json.strip().startswith('{'):
-            # Look for { ... } pattern
-            obj_match = re.search(r'({[\s\S]*})', raw_json)
-            if obj_match:
-                raw_json = obj_match.group(1)
-        
-        # Parse JSON
+        # STRATEGY 1: Direct parse
         try:
-            data = json.loads(raw_json)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON syntax: {e}")
+            parsed_data = json.loads(raw_json)
+        except json.JSONDecodeError:
+            pass
+        
+        # STRATEGY 2: Strip markdown code blocks
+        if not parsed_data:
+            cleaned = raw_json.strip()
+            if cleaned.startswith("```"):
+                lines = cleaned.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                cleaned = "\n".join(lines).strip()
+                
+                try:
+                    parsed_data = json.loads(cleaned)
+                except json.JSONDecodeError:
+                    pass
+        
+        # STRATEGY 3: Extract first JSON block using regex
+        if not parsed_data:
+            json_match = re.search(r'\{.*\}', raw_json, re.DOTALL)
+            if json_match:
+                extracted = json_match.group(0)
+                try:
+                    parsed_data = json.loads(extracted)
+                except json.JSONDecodeError:
+                    # STRATEGY 4: Fix trailing commas and retry
+                    fixed = re.sub(r',(\s*[}\]])', r'\1', extracted)
+                    try:
+                        parsed_data = json.loads(fixed)
+                    except json.JSONDecodeError:
+                        # STRATEGY 5: Try to complete truncated JSON
+                        # Count open/close brackets to detect truncation
+                        open_braces = extracted.count('{')
+                        close_braces = extracted.count('}')
+                        open_brackets = extracted.count('[')
+                        close_brackets = extracted.count(']')
+                        
+                        if open_braces > close_braces or open_brackets > close_brackets:
+                            # JSON is truncated, try to close it
+                            completed = extracted
+                            
+                            # Remove incomplete last line if it looks truncated
+                            if not completed.rstrip().endswith(('}', ']', '"')):
+                                lines = completed.split('\n')
+                                # Remove last incomplete line
+                                completed = '\n'.join(lines[:-1])
+                            
+                            # Close open strings if needed
+                            if completed.count('"') % 2 != 0:
+                                completed += '"'
+                            
+                            # Close open arrays/objects
+                            while open_brackets > close_brackets:
+                                completed += '\n      ]'
+                                close_brackets += 1
+                            
+                            while open_braces > close_braces:
+                                completed += '\n    }'
+                                close_braces += 1
+                            
+                            try:
+                                parsed_data = json.loads(completed)
+                            except json.JSONDecodeError:
+                                pass
+        
+        # If all strategies failed
+        if not parsed_data:
+            raise ValueError(f"Invalid JSON syntax: Could not parse response after all repair attempts. First 200 chars: {raw_json[:200]}")
+        
+        data = parsed_data
         
         # Validate structure
         if "questions" not in data or not isinstance(data["questions"], list):

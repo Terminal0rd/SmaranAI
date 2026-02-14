@@ -241,22 +241,27 @@ export default function QuizPage() {
 
                         {/* Options */}
                         <div className="space-y-3">
-                            {currentQuestion.question_type === 'mcq' && currentQuestion.options?.map((option: string, i: number) => (
-                                <motion.button
-                                    key={i}
-                                    whileHover={{ scale: 1.01 }}
-                                    whileTap={{ scale: 0.99 }}
-                                    onClick={() => handleAnswer(option.charAt(0))}
-                                    className={cn(
-                                        'w-full p-4 rounded-xl text-left transition-all',
-                                        answers[currentQuestion.id] === option.charAt(0)
-                                            ? 'bg-violet-500/20 border-2 border-violet-500 text-white'
-                                            : 'bg-slate-800/50 border-2 border-transparent hover:border-slate-700 text-slate-300'
-                                    )}
-                                >
-                                    {option}
-                                </motion.button>
-                            ))}
+                            {currentQuestion.question_type === 'mcq' && currentQuestion.options?.map((option: string, i: number) => {
+                                const optionLetter = String.fromCharCode(65 + i); // 0->A, 1->B, 2->C, 3->D
+
+                                return (
+                                    <motion.button
+                                        key={i}
+                                        whileHover={{ scale: 1.01 }}
+                                        whileTap={{ scale: 0.99 }}
+                                        onClick={() => handleAnswer(optionLetter)}
+                                        className={cn(
+                                            'w-full p-4 rounded-xl text-left transition-all',
+                                            answers[currentQuestion.id] === optionLetter
+                                                ? 'bg-violet-500/20 border-2 border-violet-500 text-white'
+                                                : 'bg-slate-800/50 border-2 border-transparent hover:border-slate-700 text-slate-300'
+                                        )}
+                                    >
+                                        <span className="font-semibold text-violet-400 mr-2">{optionLetter}.</span>
+                                        {option}
+                                    </motion.button>
+                                );
+                            })}
 
                             {currentQuestion.question_type === 'true_false' && ['True', 'False'].map((option) => (
                                 <motion.button
@@ -283,6 +288,22 @@ export default function QuizPage() {
                                     onChange={(e) => handleAnswer(e.target.value)}
                                     className="w-full p-4 rounded-xl bg-slate-800/50 border-2 border-slate-700 text-white focus:border-violet-500 focus:outline-none"
                                 />
+                            )}
+
+                            {/* Clear Selection Button */}
+                            {answers[currentQuestion.id] && (
+                                <motion.button
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    onClick={() => {
+                                        const newAnswers = { ...answers };
+                                        delete newAnswers[currentQuestion.id];
+                                        setAnswers(newAnswers);
+                                    }}
+                                    className="w-full p-3 rounded-xl bg-red-500/10 border-2 border-red-500/30 hover:border-red-500 text-red-400 transition-all text-center text-sm"
+                                >
+                                    Clear Selection
+                                </motion.button>
                             )}
                         </div>
                     </motion.div>

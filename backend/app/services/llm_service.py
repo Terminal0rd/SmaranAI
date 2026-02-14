@@ -249,7 +249,8 @@ Remember:
             {"role": "user", "content": user_prompt}
         ]
         
-        return await self.chat_completion(messages, max_tokens=300, temperature=0.3)
+        # INCREASED: Need more tokens for 5 questions with 4 options each
+        return await self.chat_completion(messages, max_tokens=800, temperature=0.3)
     
     async def generate_youtube_keywords(
         self,

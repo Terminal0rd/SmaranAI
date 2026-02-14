@@ -37,6 +37,7 @@ ollama pull qwen2.5:7b-instruct
 
 # Start Ollama (it runs as a service, or use:)
 ollama serve
+ollama run phi3local
 ```
 
 ### 2. Start Backend

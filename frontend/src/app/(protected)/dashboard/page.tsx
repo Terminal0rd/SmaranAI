@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useSessionStore } from '@/lib/session-store';
-import { subjectsAPI, sessionsAPI, progressAPI } from '@/lib/api';
+import { subjectsAPI, sessionsAPI, progressAPI, preparationAPI } from '@/lib/api';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { formatDate, getTimeAgo } from '@/lib/utils';
 
@@ -28,20 +28,23 @@ export default function DashboardPage() {
     const { setSubjects } = useSessionStore();
     const [subjects, setLocalSubjects] = useState<any[]>([]);
     const [sessions, setSessions] = useState<any[]>([]);
+    const [preparations, setPreparations] = useState<any[]>([]);
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [subjectsRes, sessionsRes, progressRes] = await Promise.all([
+                const [subjectsRes, sessionsRes, progressRes, preparationsRes] = await Promise.all([
                     subjectsAPI.getAll(),
                     sessionsAPI.getAll(),
                     progressAPI.getDashboard(),
+                    preparationAPI.getHistory().catch(() => ({ data: [] })),
                 ]);
                 setLocalSubjects(subjectsRes.data);
                 setSubjects(subjectsRes.data);
                 setSessions(sessionsRes.data.slice(0, 5));
+                setPreparations(preparationsRes.data || []);
                 setDashboardData(progressRes.data);
             } catch (error) {
                 console.error('Failed to fetch dashboard data:', error);
@@ -135,54 +138,92 @@ export default function DashboardPage() {
                     {/* Recent Sessions */}
                     <div className="lg:col-span-2">
                         <Card>
-                            <CardHeader className="flex items-center justify-between">
-                                <CardTitle>Recent Sessions</CardTitle>
-                                <Link href="/learn">
-                                    <Button size="sm" variant="ghost">
-                                        View All
-                                        <ArrowRight className="w-4 h-4 ml-1" />
-                                    </Button>
-                                </Link>
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Clock className="w-4 h-4 text-violet-400" />
+                                        Recent Sessions
+                                    </div>
+                                    <Link href="/learn">
+                                        <Button variant="ghost" size="sm">
+                                            View All
+                                            <ArrowRight className="w-3 h-3 ml-1" />
+                                        </Button>
+                                    </Link>
+                                </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                {sessions.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {sessions.map((session, index) => (
-                                            <motion.div
-                                                key={session.id}
-                                                initial={{ opacity: 0, x: -20 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                transition={{ delay: index * 0.05 }}
-                                            >
-                                                <Link href={`/learn/${session.id}`}>
-                                                    <div className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer">
-                                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500/20 to-indigo-500/20 flex items-center justify-center">
-                                                            <BookOpen className="w-5 h-5 text-violet-400" />
-                                                        </div>
+                                {sessions.length === 0 ? (
+                                    <p className="text-sm text-slate-400 text-center py-4">
+                                        No sessions yet. Start learning!
+                                    </p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {sessions.map((session: any) => (
+                                            <Link key={session.id} href={`/learn/${session.id}`}>
+                                                <div className="p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer">
+                                                    <div className="flex items-start justify-between gap-2">
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-white font-medium truncate">
-                                                                {session.title || 'Untitled Session'}
+                                                            <p className="text-sm text-white truncate">
+                                                                {session.topic || 'Untitled Session'}
                                                             </p>
-                                                            <p className="text-sm text-slate-400">
-                                                                {getTimeAgo(session.updated_at)}
+                                                            <p className="text-xs text-slate-400 mt-1">
+                                                                {getTimeAgo(new Date(session.created_at))}
                                                             </p>
                                                         </div>
-                                                        <ArrowRight className="w-4 h-4 text-slate-500" />
+                                                        <ArrowRight className="w-4 h-4 text-slate-500 flex-shrink-0 mt-1" />
                                                     </div>
-                                                </Link>
-                                            </motion.div>
+                                                </div>
+                                            </Link>
                                         ))}
                                     </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Recent Preparations - NEW */}
+                        <Card className="mt-6">
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <GraduationCap className="w-4 h-4 text-emerald-400" />
+                                        Recent Preparations
+                                    </div>
+                                    <Link href="/preparation">
+                                        <Button variant="ghost" size="sm">
+                                            View All
+                                            <ArrowRight className="w-3 h-3 ml-1" />
+                                        </Button>
+                                    </Link>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {preparations.length === 0 ? (
+                                    <p className="text-sm text-slate-400 text-center py-4">
+                                        No preparations yet. Generate your first one!
+                                    </p>
                                 ) : (
-                                    <div className="text-center py-8">
-                                        <BookOpen className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                                        <p className="text-slate-400 mb-4">No sessions yet</p>
-                                        <Link href="/learn">
-                                            <Button size="sm">
-                                                <Plus className="w-4 h-4 mr-1" />
-                                                Start Learning
-                                            </Button>
-                                        </Link>
+                                    <div className="space-y-2">
+                                        {preparations.slice(0, 3).map((prep: any) => (
+                                            <div key={prep.id}>
+                                                <div className="p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm text-white truncate font-medium">
+                                                                {prep.subject}
+                                                            </p>
+                                                            <p className="text-xs text-slate-400 mt-1">
+                                                                {prep.university} • {prep.exam_type}
+                                                            </p>
+                                                            <p className="text-xs text-slate-500 mt-1">
+                                                                {getTimeAgo(new Date(prep.created_at))}
+                                                            </p>
+                                                        </div>
+                                                        <ArrowRight className="w-4 h-4 text-slate-500 flex-shrink-0 mt-1" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </CardContent>
@@ -212,7 +253,7 @@ export default function DashboardPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Preparation Mode - NEW */}
+                        {/* Preparation Mode */}
                         <Card variant="gradient">
                             <CardContent className="text-center py-6">
                                 <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center">
@@ -232,8 +273,6 @@ export default function DashboardPage() {
                                 </Link>
                             </CardContent>
                         </Card>
-
-                        {/* Teacher Mode removed - Preparation Mode coming soon */}
 
                         {/* Weak Topics */}
                         {dashboardData?.weak_topics?.length > 0 && (
