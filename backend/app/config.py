@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Vector Store (GLOBAL - shared across all users)
     vector_store_path: str = "storage/vectors.pkl"
     
+    # Voice Tutor Mode (Text-to-Speech)
+    enable_voice_tutor: bool = False  # Set to True to enable audio generation
+    
     # CORS
     frontend_url: str = "http://localhost:3000"
     

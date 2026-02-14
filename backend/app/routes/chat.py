@@ -1,5 +1,5 @@
 """
-Chat API routes (AI Tutor) - WITH STREAMING SUPPORT
+Chat API routes (AI Tutor) - WITH STREAMING SUPPORT AND READ ALOUD
 """
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,9 +20,67 @@ from app.services.mindmap_service import mindmap_service
 from app.services.progress_service import progress_service
 from app.services.streaming_service import stream_chat_completion
 from app.services.llm_service import llm_service
+from app.services.tts_service import tts_service  # NEW: Voice Tutor Mode
+from app.config import get_settings  # NEW: For voice tutor config
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 logger = logging.getLogger(__name__)
+settings = get_settings()  # NEW: For voice tutor config
+
+
+@router.post("/read-aloud/{message_id}")
+async def read_aloud_message(
+    message_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Generate audio for an existing message on-demand (Read Aloud button)
+    Returns audio URL immediately
+    """
+    # Get the message
+    result = await db.execute(
+        select(Message).where(Message.id == message_id)
+    )
+    message = result.scalar_one_or_none()
+    
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    # Verify the message belongs to user's session
+    session_result = await db.execute(
+        select(Session).where(
+            Session.id == message.session_id,
+            Session.user_id == current_user.id
+        )
+    )
+    session = session_result.scalar_one_or_none()
+    
+    if not session:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Generate audio
+    try:
+        logger.info(f"Generating on-demand audio for message {message_id}")
+        audio_url = await tts_service.generate_audio(
+            text=message.content,
+            message_id=str(message_id)
+        )
+        
+        if not audio_url:
+            raise HTTPException(status_code=500, detail="Failed to generate audio")
+        
+        logger.info(f"Audio generated successfully: {audio_url}")
+        
+        return {
+            "message_id": message_id,
+            "audio_url": audio_url,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Audio generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Audio generation failed: {str(e)}")
 
 
 @router.post("/stream")
@@ -247,12 +305,31 @@ async def send_message(
     await db.commit()
     await db.refresh(assistant_message)
     
+    # Generate audio if Voice Tutor Mode is enabled (NEW)
+    audio_url = None
+    if settings.enable_voice_tutor:
+        try:
+            logger.info(f"Generating audio for message {assistant_message.id}")
+            audio_url = await tts_service.generate_audio(
+                text=response,
+                message_id=str(assistant_message.id)
+            )
+            if audio_url:
+                logger.info(f"Audio generated successfully: {audio_url}")
+            else:
+                logger.warning("Audio generation returned None")
+        except Exception as e:
+            # Fail gracefully - don't break response if audio generation fails
+            logger.error(f"Audio generation failed: {e}")
+            audio_url = None
+    
     return ChatResponse(
         message_id=assistant_message.id,
         content=response,
         formatted_content=formatted,
         sources=[SourceReference(**s) for s in sources],
-        concepts_extracted=concepts
+        concepts_extracted=concepts,
+        audio_url=audio_url  # NEW: Voice Tutor Mode
     )
 
 

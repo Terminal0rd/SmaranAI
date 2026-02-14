@@ -8,6 +8,7 @@ from app.models.mindmap import MindMapNode, MindMapEdge
 from app.models.quiz import QuizAttempt, QuizQuestion
 from app.models.progress import Progress
 from app.models.document import Document, DocumentChunk
+from app.models.preparation import Preparation
 
 __all__ = [
     "User",
@@ -22,4 +23,5 @@ __all__ = [
     "Progress",
     "Document",
     "DocumentChunk",
+    "Preparation",
 ]

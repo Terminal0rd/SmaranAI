@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles  # NEW: For serving audio files
 import logging
+
 
 from app.config import get_settings
 from app.database import init_db
@@ -17,10 +19,11 @@ from app.routes import (
     mindmap_router,
     quiz_router,
     progress_router,
-    documents_router
+    documents_router,
+    preparation_router  # NEW
 )
 from app.routes.export import router as export_router
-from app.routes.teacher import router as teacher_router
+# Teacher router removed - replaced with Preparation Mode
 
 # Configure logging
 logging.basicConfig(
@@ -101,11 +104,14 @@ app.add_middleware(
     allow_origins=[
         settings.frontend_url,
         "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
+        "http://localhost:8888",  # Additional frontend port
+        "http://127.0.0.1:8888"
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],  # NEW: Expose all headers
 )
 
 
@@ -137,7 +143,8 @@ app.include_router(quiz_router)
 app.include_router(progress_router)
 app.include_router(documents_router)
 app.include_router(export_router)
-app.include_router(teacher_router)
+app.include_router(preparation_router)  # NEW: Preparation Mode
+# Teacher router removed - replaced with Preparation Mode
 
 
 # Health check
@@ -177,3 +184,8 @@ async def llm_status():
         "connected": is_healthy,
         "url": settings.llm_server_url
     }
+
+
+# Mount static files for audio LAST (NEW: Voice Tutor Mode)
+# This must be after all API routes to avoid CORS preflight conflicts
+app.mount("/static", StaticFiles(directory="static"), name="static")

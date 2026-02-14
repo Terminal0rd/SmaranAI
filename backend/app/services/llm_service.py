@@ -19,59 +19,61 @@ class LLMService:
         self.base_url = settings.llm_server_url.rstrip('/')
         self.max_tokens = 350  # Optimized for 4GB VRAM GPU
         self.context_window = 2048  # Limited for GPU memory
+        self.model_name = "qwen2.5:7b-instruct" # Added model_name attribute
     
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.3,  # Balanced for quality and consistency
-        stop: Optional[List[str]] = None,
-        bypass_default: bool = False  # Override cap for teacher mode
+        max_tokens: int = 1000,
+        temperature: float = 0.7,
+        timeout: int = 180
     ) -> str:
         """
-        Call the LLM using OpenAI-compatible chat completions API
+        Get chat completion from LLM
         
         Args:
             messages: List of message dicts with 'role' and 'content'
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            stop: Stop sequences
-            
+            max_tokens: Maximum tokens in response
+            temperature: Sampling temperature (0-1)
+            timeout: Request timeout in seconds (default 180s)
+        
         Returns:
-            Generated text
+            Response text from LLM
         """
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:  # 2 minutes timeout
+            # Configure granular timeout
+            timeout_config = httpx.Timeout(
+                timeout=float(timeout),
+                connect=60.0,
+                read=float(timeout),
+                write=60.0
+            )
+            
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
                 response = await client.post(
-                    f"{self.base_url}/v1/chat/completions",
+                    f"{self.base_url}/v1/chat/completions",  # Ollama requires /v1/ prefix
                     json={
-                        "model": "qwen2.5:7b-instruct",
+                        "model": self.model_name,
                         "messages": messages,
-                        "max_tokens": max_tokens if bypass_default else (max_tokens or self.max_tokens),
+                        "max_tokens": max_tokens,
                         "temperature": temperature,
-                        "stop": stop or [],
-                        "stream": False,
-                        "num_ctx": self.context_window  # GPU memory optimization
-                    },
-                    headers={"Content-Type": "application/json"}
+                        "stream": False
+                    }
                 )
-                response.raise_for_status()
-                data = response.json()
                 
-                # Extract message content from OpenAI format
-                if "choices" in data and len(data["choices"]) > 0:
-                    return data["choices"][0]["message"]["content"]
-                return ""
+                if response.status_code != 200:
+                    logger.error(f"LLM returned status {response.status_code}: {response.text}")
+                    raise Exception(f"LLM request failed with status {response.status_code}")
                 
-        except httpx.TimeoutException:
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
+                
+        except httpx.ReadTimeout:
             logger.error("LLM request timed out")
             raise Exception("LLM request timed out. Please try again.")
-        except httpx.HTTPError as e:
-            logger.error(f"LLM HTTP error: {e}")
-            raise Exception(f"LLM server error: {str(e)}")
         except Exception as e:
-            logger.error(f"LLM error: {e}")
-            raise Exception(f"Failed to generate response: {str(e)}")
+            logger.error(f"LLM request failed: {e}")
+            raise Exception(f"LLM server error: {str(e)}")
     
     async def generate(
         self,

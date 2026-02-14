@@ -24,6 +24,7 @@ import ReactMarkdown from 'react-markdown';
 import { Button, Input, Card } from '@/components/ui';
 import { sessionsAPI, chatAPI, subjectsAPI, exportAPI } from '@/lib/api';
 import { formatTime } from '@/lib/utils';
+import { ReadAloudButton } from '@/components/ReadAloudButton';
 import Link from 'next/link';
 
 export default function SessionPage() {
@@ -280,6 +281,14 @@ export default function SessionPage() {
                                             <ReactMarkdown>
                                                 {currentSlide.formatted_content || currentSlide.content}
                                             </ReactMarkdown>
+                                        </div>
+
+                                        {/* Read Aloud Button */}
+                                        <div className="mt-4 pt-4 border-t border-slate-700/50">
+                                            <ReadAloudButton
+                                                messageId={currentSlide.id}
+                                                messageContent={currentSlide.content}
+                                            />
                                         </div>
 
                                         {currentSlide.sources_used?.length > 0 && (

@@ -38,4 +38,5 @@ class User(Base):
     quiz_attempts = relationship("QuizAttempt", back_populates="user", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="uploader", cascade="all, delete-orphan")
     mindmap_nodes = relationship("MindMapNode", back_populates="user", cascade="all, delete-orphan")
-    teacher_roadmaps = relationship("TeacherRoadmap", back_populates="user", cascade="all, delete-orphan")
+    preparations = relationship("Preparation", back_populates="user", cascade="all, delete-orphan")
+

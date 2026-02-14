@@ -241,30 +241,53 @@ export interface QuizResult {
         is_correct: boolean;
         source_concept?: string;
     }[];
-}
+};
 
-// Teacher Mode API
-export const teacherAPI = {
-    createRoadmap: (data: { subject: string; goal?: string }) =>
-        api.post('/api/teacher/roadmap/create', data),
-    getAllRoadmaps: () =>
-        api.get('/api/teacher/roadmap'),
-    getRoadmap: (roadmapId: string) =>
-        api.get(`/api/teacher/roadmap/${roadmapId}`),
-    getModule: (roadmapId: string, moduleId: string) =>
-        api.get(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}`),
-    generateTeach: (roadmapId: string, moduleId: string) =>
-        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/teach`),
-    generateCheck: (roadmapId: string, moduleId: string) =>
-        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/check/generate`),
-    submitCheck: (roadmapId: string, moduleId: string, answers: any[]) =>
-        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/check/submit`, { answers }),
-    generateReteach: (roadmapId: string, moduleId: string, weakTopics: string[]) =>
-        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/reteach`, { weak_topics: weakTopics }),
-    getMemoryCards: (roadmapId: string, moduleId: string) =>
-        api.get(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/memory-cards`),
-    teachChat: (roadmapId: string, moduleId: string, message: string) =>
-        api.post(`/api/teacher/roadmap/${roadmapId}/module/${moduleId}/chat`, { message }),
+// Teacher Mode API removed - Replaced with Preparation Mode
+
+// Preparation Mode API
+export const preparationAPI = {
+    generate: (data: {
+        subject: string;
+        university: string;
+        exam_type?: string;
+        exam_date?: string;
+        use_rag?: boolean;
+    }) => api.post('/api/preparation/generate', data),
+
+    generateSection: async (data: {
+        prep_id: number;  // Track which preparation to update
+        section: string;
+        subject: string;
+        university: string;
+        exam_type: string;
+        exam_date?: string | null;
+    }) => {
+        const response = await api.post('/api/preparation/generate-section', null, {
+            params: data  // Send as query parameters
+        });
+        return response.data;
+    },
+
+    // History endpoints
+    getHistory: async (limit = 10, offset = 0) => {
+        const response = await api.get('/api/preparation/history', {
+            params: { limit, offset }
+        });
+        return response.data;
+    },
+
+    getPreparationById: async (id: number) => {
+        const response = await api.get(`/api/preparation/history/${id}`);
+        return response.data;
+    },
+
+    deletePreparation: async (id: number) => {
+        const response = await api.delete(`/api/preparation/history/${id}`);
+        return response.data;
+    },
+
+    health: () => api.get('/api/preparation/health'),
 };
 
 export default api;

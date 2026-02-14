@@ -212,26 +212,28 @@ export default function DashboardPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Teacher Mode */}
+                        {/* Preparation Mode - NEW */}
                         <Card variant="gradient">
                             <CardContent className="text-center py-6">
                                 <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center">
                                     <GraduationCap className="w-8 h-8 text-white" />
                                 </div>
                                 <h3 className="text-lg font-semibold text-white mb-2">
-                                    Teacher Mode
+                                    Preparation Mode
                                 </h3>
                                 <p className="text-sm text-slate-400 mb-4">
-                                    Create structured roadmaps and master subjects
+                                    AI-powered semester prep: notes, questions, mock tests
                                 </p>
-                                <Link href="/teacher-mode">
+                                <Link href="/preparation">
                                     <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
-                                        <GraduationCap className="w-4 h-4 mr-2" />
-                                        Open Classroom
+                                        <Sparkles className="w-4 h-4 mr-2" />
+                                        Generate Prep
                                     </Button>
                                 </Link>
                             </CardContent>
                         </Card>
+
+                        {/* Teacher Mode removed - Preparation Mode coming soon */}
 
                         {/* Weak Topics */}
                         {dashboardData?.weak_topics?.length > 0 && (

@@ -24,6 +24,7 @@ class ChatResponse(BaseModel):
     formatted_content: str
     sources: List[SourceReference] = []
     concepts_extracted: List[str] = []
+    audio_url: Optional[str] = None  # NEW: Audio file URL for voice tutor mode
 
 
 class YouTubeRecommendation(BaseModel):
