@@ -212,7 +212,8 @@ Return ONLY valid JSON:
 
 Generate: 8 five-mark, 6 ten-mark, 5 predicted questions."""
         
-        response = await self._call_llm(prompt, max_tokens=700)  # REDUCED for speed
+        # INCREASED timeout to 180s for more complex generation
+        response = await self._call_llm(prompt, max_tokens=600, timeout=180)
         return self._safe_json_parse(response, {"five_mark_questions": [], "ten_mark_questions": [], "predicted_questions": []})
     
     async def _generate_mock_and_viva(self, subject: str, university: str, exam_type: str) -> Dict:
@@ -288,7 +289,7 @@ PPT: 8-10 slides. Study plan: 15 days."""
         response = await self._call_llm(prompt, max_tokens=600)  # REDUCED for speed
         return self._safe_json_parse(response, {"ppt_content": [], "study_plan": []})
     
-    async def _call_llm(self, prompt: str, max_tokens: int = 600) -> str:
+    async def _call_llm(self, prompt: str, max_tokens: int = 600, timeout: int = 120) -> str:
         """Call LLM with focused prompt (OPTIMIZED with safety checks)"""
         
         # SAFETY: Truncate prompt if too large
@@ -321,7 +322,7 @@ PPT: 8-10 slides. Study plan: 15 days."""
             messages=messages,
             max_tokens=max_tokens,
             temperature=0.7,
-            timeout=120  # 2 minutes per section (stable for CPU-based Ollama)
+            timeout=timeout  # Use provided timeout
         )
         
         return response
