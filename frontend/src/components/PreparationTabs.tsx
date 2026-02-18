@@ -61,22 +61,47 @@ export function PreparationTabs({ data }: PreparationTabsProps) {
     const handleTabChange = async (tabValue: string) => {
         setActiveTab(tabValue);
 
-        // Skip if syllabus or already loaded
-        if (tabValue === 'syllabus' || loadedSections.has(tabValue)) {
+        // Skip if syllabus (always loaded)
+        if (tabValue === 'syllabus') {
             return;
         }
 
         const sectionName = tabToSection[tabValue];
-        if (!sectionName || loadedSections.has(sectionName)) {
+        if (!sectionName) {
             return;
         }
 
-        // Load section on-demand
+        // Check if this section already has content in the data
+        const sectionHasContent = () => {
+            switch (sectionName) {
+                case 'notes':
+                    return sectionData.notes && sectionData.notes.length > 0;
+                case 'questions':
+                    return sectionData.five_mark_questions && sectionData.five_mark_questions.length > 0;
+                case 'mock_viva':
+                    return sectionData.mock_test && Object.keys(sectionData.mock_test).length > 0;
+                case 'ppt_plan':
+                    return sectionData.ppt_content && sectionData.ppt_content.length > 0;
+                default:
+                    return false;
+            }
+        };
+
+        // Skip if already loaded or already has content
+        if (loadedSections.has(tabValue) || sectionHasContent()) {
+            // Mark as loaded if it has content but wasn't marked yet
+            if (sectionHasContent() && !loadedSections.has(tabValue)) {
+                setLoadedSections(prev => new Set([...prev, sectionName, tabValue]));
+            }
+            return;
+        }
+
+        // Load section on-demand (only if truly missing)
         setLoadingSection(tabValue);
         try {
-            console.log('DEBUG: Calling generateSection with prep_id:', data.id, 'data:', data);
+            console.log('DEBUG: Calling generateSection with prep_id:', data.id, 'section:', sectionName);
             const result = await preparationAPI.generateSection({
-                prep_id: data.id,  // Pass preparation ID
+                prep_id: data.id,
                 section: sectionName,
                 subject: data.subject,
                 university: data.university,

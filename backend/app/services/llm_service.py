@@ -249,8 +249,8 @@ Remember:
             {"role": "user", "content": user_prompt}
         ]
         
-        # INCREASED: Need more tokens for 5 questions with 4 options each
-        return await self.chat_completion(messages, max_tokens=800, temperature=0.3)
+        # INCREASED: Need 240s timeout for reliable quiz generation on CPU
+        return await self.chat_completion(messages, max_tokens=800, temperature=0.3, timeout=600)
     
     async def generate_youtube_keywords(
         self,
