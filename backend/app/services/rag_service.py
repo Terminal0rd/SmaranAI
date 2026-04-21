@@ -24,29 +24,42 @@ class RAGService:
     ) -> Tuple[str, List[dict]]:
         """
         Retrieve relevant context for a query
-        SMART SEARCH: Prioritizes current subject, falls back to all subjects
+        STRICT SUBJECT-FIRST: Only uses current subject's PDFs unless zero results found
         
         Args:
             query: User's question
-            subject_id: Optional subject filter (prioritized)
+            subject_id: Optional subject filter (STRICTLY prioritized)
             top_k: Number of chunks to retrieve
             
         Returns:
             Tuple of (context string, sources list)
         """
-        # First: Search within the current subject
+        # STEP 1: Search STRICTLY within the current subject first
         results = embedding_service.search(query, top_k=top_k, subject_id=subject_id)
         
-        # If not enough quality results, search globally
-        quality_results = [r for r in results if r['score'] > 0.3]
+        # Filter to quality results only (score > 0.4 for tighter relevance)
+        quality_results = [r for r in results if r['score'] > 0.4]
         
-        if len(quality_results) < 3 and subject_id:
-            logger.info(f"Only {len(quality_results)} results in subject {subject_id}, searching globally...")
+        # STEP 2: ONLY fall back to global search if ZERO quality results from subject
+        # This prevents cross-subject contamination (e.g., ML session getting Blockchain answers)
+        if len(quality_results) == 0 and subject_id:
+            logger.warning(
+                f"[RAG] ZERO quality results in subject {subject_id} for query '{query[:50]}...', "
+                f"falling back to global search"
+            )
             global_results = embedding_service.search(query, top_k=top_k, subject_id=None)
+            global_quality = [r for r in global_results if r['score'] > 0.4]
             
-            # Merge results, prioritizing subject-specific ones
-            all_results = results + [r for r in global_results if r not in results]
-            results = all_results[:top_k]
+            # Use global results ONLY as last resort, clearly marked as cross-subject
+            results = global_quality[:top_k]
+        else:
+            # Use subject-specific results (even if few — better to have 1 correct result 
+            # than 5 results from wrong subjects)
+            results = quality_results
+            logger.info(
+                f"[RAG] Found {len(quality_results)} quality results in subject {subject_id} "
+                f"for query '{query[:50]}...'"
+            )
         
         if not results:
             return "", []
@@ -56,21 +69,21 @@ class RAGService:
         sources = []
         
         for result in results:
-            if result['score'] > 0.3:  # Only include relevant results
-                metadata = result['metadata']
-                context_parts.append(metadata['content'])
+            metadata = result['metadata']
+            context_parts.append(metadata['content'])
+            
+            # Mark if from current subject or cross-subject
+            source_info = {
+                'filename': metadata['filename'],
+                'chunk_preview': metadata.get('content_preview', metadata['content'][:100])
+            }
+            
+            # Add indicator if from different subject
+            if subject_id and metadata.get('subject_id') != subject_id:
+                source_info['cross_subject'] = True
+                logger.info(f"[RAG] Cross-subject result from '{metadata['filename']}' (subject: {metadata.get('subject_id')})")
                 
-                # Mark if from current subject or cross-subject
-                source_info = {
-                    'filename': metadata['filename'],
-                    'chunk_preview': metadata.get('content_preview', metadata['content'][:100])
-                }
-                
-                # Add indicator if from different subject
-                if subject_id and metadata.get('subject_id') != subject_id:
-                    source_info['cross_subject'] = True
-                    
-                sources.append(source_info)
+            sources.append(source_info)
         
         context = "\n\n---\n\n".join(context_parts)
         return context, sources
@@ -131,11 +144,11 @@ class RAGService:
         Returns:
             Tuple of (response, formatted_response, sources, concepts)
         """
-        # Get RAG context (reduced for GPU optimization)
+        # Get RAG context (subject-strict retrieval)
         context, sources = await self.get_context_for_query(
             question, 
             subject_id=subject_id,
-            top_k=2  # Reduced from 5 for faster processing
+            top_k=3  # Enough chunks for good context without being too slow
         )
         
         # Get session summary

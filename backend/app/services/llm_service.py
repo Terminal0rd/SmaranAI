@@ -17,7 +17,7 @@ class LLMService:
     
     def __init__(self):
         self.base_url = settings.llm_server_url.rstrip('/')
-        self.max_tokens = 350  # Optimized for 4GB VRAM GPU
+        self.max_tokens = 500  # Balanced for 4GB VRAM GPU
         self.context_window = 2048  # Limited for GPU memory
         self.model_name = "qwen2.5:7b-instruct" # Added model_name attribute
     
@@ -26,7 +26,8 @@ class LLMService:
         messages: List[Dict[str, str]],
         max_tokens: int = 1000,
         temperature: float = 0.7,
-        timeout: int = 180
+        timeout: int = 180,
+        bypass_default: bool = False
     ) -> str:
         """
         Get chat completion from LLM
@@ -173,9 +174,9 @@ CRITICAL OUTPUT RULES:
 
 FIELD REQUIREMENTS:
 - "question": Non-empty string, 10+ chars, references specific content
-- "options": Array of EXACTLY 4 strings, each 30-100 chars
+- "options": Array of EXACTLY 4 strings, each 15-60 chars (keep SHORT)
 - "correct_index": Integer 0-3 (position of correct answer in options array)
-- "explanation": Brief explanation of correct answer
+- "explanation": 1 sentence max
 
 CONTENT RULES:
 1. Generate questions ONLY from provided content
@@ -195,7 +196,7 @@ MCQ DISTRACTOR RULES:
   * Common misconceptions about the topic
   * Similar but incorrect concepts from content
   * Edge cases or partial truths
-  * Same style and length as correct answer (30-100 chars)
+  * Same style and length as correct answer (15-60 chars)
   
 FORBIDDEN DISTRACTOR TYPES:
 - "This was not discussed"
@@ -249,8 +250,8 @@ Remember:
             {"role": "user", "content": user_prompt}
         ]
         
-        # INCREASED: Need 240s timeout for reliable quiz generation on CPU
-        return await self.chat_completion(messages, max_tokens=800, temperature=0.3, timeout=600)
+        # 1500 tokens needed for 5 MCQs with options + explanations
+        return await self.chat_completion(messages, max_tokens=1500, temperature=0.3, timeout=600)
     
     async def generate_youtube_keywords(
         self,

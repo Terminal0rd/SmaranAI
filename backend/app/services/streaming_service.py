@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 async def stream_chat_completion(
     messages: list[dict[str, str]],
     model: str = "qwen2.5:7b-instruct",
-    max_tokens: int = 350,
+    max_tokens: int = 500,
     temperature: float = 0.3,
     num_ctx: int = 2048
 ) -> AsyncIterator[str]:

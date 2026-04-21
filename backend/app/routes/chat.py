@@ -109,13 +109,21 @@ async def send_message_stream(
         content=request.message
     )
     db.add(user_message)
+    
+    # Auto-title: Set session title from first user message if untitled
+    if not session.title or session.title.endswith(' Session'):
+        auto_title = request.message[:60].strip()
+        if len(request.message) > 60:
+            auto_title += '...'
+        session.title = auto_title
+    
     await db.commit()
     
     # Get RAG context
     context, sources = await rag_service.get_context_for_query(
         request.message,
         subject_id=session.subject_id,
-        top_k=2
+        top_k=3
     )
     
     # Get session summary
@@ -242,6 +250,14 @@ async def send_message(
         content=request.message
     )
     db.add(user_message)
+    
+    # Auto-title: Set session title from first user message if untitled
+    if not session.title or session.title.endswith(' Session'):
+        auto_title = request.message[:60].strip()
+        if len(request.message) > 60:
+            auto_title += '...'
+        session.title = auto_title
+    
     await db.flush()
     
     # Generate response using RAG

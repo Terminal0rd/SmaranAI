@@ -88,7 +88,7 @@ class QuizService:
         
         # STEP 4: Combine and preprocess content (strip markdown, limit size)
         raw_content = "\n\n".join(content_parts)
-        full_content = self._preprocess_session_content(raw_content, max_chars=1200)
+        full_content = self._preprocess_session_content(raw_content, max_chars=2000)
         
         if len(full_content) < 200:
             raise ValueError(
@@ -99,7 +99,7 @@ class QuizService:
         
         # STEP 5: Generate questions with RETRY LOGIC (max 2 retries)
         questions_data = []
-        max_retries = 2
+        max_retries = 3
         last_error = None
         
         for attempt in range(max_retries):
@@ -331,46 +331,79 @@ class QuizService:
                     try:
                         parsed_data = json.loads(fixed)
                     except json.JSONDecodeError:
-                        # STRATEGY 5: Try to complete truncated JSON
-                        # Count open/close brackets to detect truncation
-                        open_braces = extracted.count('{')
-                        close_braces = extracted.count('}')
-                        open_brackets = extracted.count('[')
-                        close_brackets = extracted.count(']')
-                        
-                        if open_braces > close_braces or open_brackets > close_brackets:
-                            # JSON is truncated, try to close it
-                            completed = extracted
-                            
-                            # Remove incomplete last line if it looks truncated
-                            if not completed.rstrip().endswith(('}', ']', '"')):
-                                lines = completed.split('\n')
-                                # Remove last incomplete line
-                                completed = '\n'.join(lines[:-1])
-                            
-                            # Close open strings if needed
-                            if completed.count('"') % 2 != 0:
-                                completed += '"'
-                            
-                            # Close open arrays/objects
-                            while open_brackets > close_brackets:
-                                completed += '\n      ]'
-                                close_brackets += 1
-                            
-                            while open_braces > close_braces:
-                                completed += '\n    }'
-                                close_braces += 1
-                            
+                        pass
+        
+        # STRATEGY 5: Progressive truncation repair (BULLETPROOF)
+        # The LLM generates valid JSON that gets truncated. We find the last
+        # point where the JSON is valid by scanning backwards through closing braces.
+        if not parsed_data:
+            import logging
+            _logger = logging.getLogger(__name__)
+            _logger.info("[Quiz JSON Repair] Attempting progressive truncation repair...")
+            
+            # Find all positions of closing braces (potential question boundaries)
+            brace_positions = [i for i, c in enumerate(raw_json) if c == '}']
+            
+            # Try from the LAST closing brace backwards
+            for pos in reversed(brace_positions):
+                candidate = raw_json[:pos + 1].rstrip().rstrip(',')
+                
+                # Try closing as {"questions": [...]}
+                for closing in ['\n  ]\n}', ']}', '\n]\n}']:
+                    try:
+                        test = candidate + closing
+                        result = json.loads(test)
+                        if isinstance(result, dict) and "questions" in result and len(result["questions"]) >= 1:
+                            parsed_data = result
+                            _logger.info(
+                                f"[Quiz JSON Repair] SUCCESS - Recovered {len(result['questions'])} "
+                                f"questions by truncating at position {pos}"
+                            )
+                            break
+                    except (json.JSONDecodeError, Exception):
+                        continue
+                
+                if parsed_data:
+                    break
+            
+            # STRATEGY 6: Parse each question object individually
+            if not parsed_data:
+                _logger.info("[Quiz JSON Repair] Trying individual question extraction...")
+                individual_questions = []
+                
+                # Find all { that start a question object
+                q_starts = [m.start() for m in re.finditer(r'\{\s*"question"', raw_json)]
+                
+                for i, start in enumerate(q_starts):
+                    # Find the matching closing brace for this question
+                    # Try each } after this start position
+                    for end_pos in range(start + 1, len(raw_json)):
+                        if raw_json[end_pos] == '}':
+                            candidate = raw_json[start:end_pos + 1]
                             try:
-                                parsed_data = json.loads(completed)
+                                q_obj = json.loads(candidate)
+                                if "question" in q_obj and "options" in q_obj:
+                                    individual_questions.append(q_obj)
+                                    break  # Found valid end for this question
                             except json.JSONDecodeError:
-                                pass
+                                continue
+                
+                if individual_questions:
+                    parsed_data = {"questions": individual_questions}
+                    _logger.info(
+                        f"[Quiz JSON Repair] SUCCESS - Extracted {len(individual_questions)} "
+                        f"individual questions"
+                    )
         
         # If all strategies failed
         if not parsed_data:
             raise ValueError(f"Invalid JSON syntax: Could not parse response after all repair attempts. First 200 chars: {raw_json[:200]}")
         
         data = parsed_data
+        
+        # Handle case where LLM returns a bare JSON array instead of {"questions": [...]}
+        if isinstance(data, list):
+            data = {"questions": data}
         
         # Validate structure
         if "questions" not in data or not isinstance(data["questions"], list):
@@ -429,7 +462,7 @@ class QuizService:
                 opt_clean = opt.strip()
                 
                 # Check length
-                if len(opt_clean) < 10 or len(opt_clean) > 200:
+                if len(opt_clean) < 5 or len(opt_clean) > 200:
                     valid = False
                     break
                 
@@ -472,10 +505,10 @@ class QuizService:
                 "explanation": q.get("explanation", "")
             })
         
-        # Ensure we have enough valid questions
-        if len(validated) < expected_count // 2:
+        # Ensure we have at least 1 valid question (better short quiz than no quiz)
+        if len(validated) < 1:
             raise ValueError(
-                f"Only {len(validated)}/{expected_count} questions passed validation. "
+                f"No valid questions generated ({expected_count} expected). "
                 f"Questions may contain markdown, duplicates, or forbidden phrases."
             )
         

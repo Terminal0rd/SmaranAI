@@ -165,7 +165,7 @@ export default function DashboardPage() {
                                                     <div className="flex items-start justify-between gap-2">
                                                         <div className="flex-1 min-w-0">
                                                             <p className="text-sm text-white truncate">
-                                                                {session.topic || 'Untitled Session'}
+                                                                {session.title || 'Untitled Session'}
                                                             </p>
                                                             <p className="text-xs text-slate-400 mt-1">
                                                                 {getTimeAgo(new Date(session.created_at))}
