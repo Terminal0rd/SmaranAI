@@ -107,14 +107,30 @@ async def generate_section(
             use_rag=True
         )
         
-        # Update preparation in database (if prep_id provided)
-        if prep_id:
+        # Only save to DB if result has actual content (not empty/error)
+        def has_real_content(data: dict) -> bool:
+            """Check if the result has real generated content, not just empty arrays"""
+            if "error" in data:
+                return False
+            for key, value in data.items():
+                if key == "error":
+                    continue
+                if isinstance(value, list) and len(value) > 0:
+                    return True
+                if isinstance(value, dict) and len(value) > 0:
+                    return True
+            return False
+        
+        # Update preparation in database (if prep_id provided AND content is valid)
+        if prep_id and has_real_content(result):
             await preparation_service.update_preparation_section(
                 prep_id=prep_id,
-                section_data=result,
+                section_data={k: v for k, v in result.items() if k != "error"},
                 db=db
             )
             logger.info(f"Section '{section}' generated and saved for prep {prep_id}")
+        elif prep_id and not has_real_content(result):
+            logger.warning(f"Section '{section}' result is empty/error, NOT saving to DB")
         else:
             logger.warning(f"No prep_id provided, section '{section}' not saved to database")
         
@@ -196,9 +212,11 @@ async def get_preparation_history(
                 "updated_at": p.updated_at.isoformat(),
                 "has_notes": bool(p.content.get("notes")),
                 "has_questions": bool(p.content.get("five_mark_questions") or p.content.get("ten_mark_questions")),
+                "has_predicted": bool(p.content.get("predicted_questions")),
                 "has_mock": bool(p.content.get("mock_test")),
                 "has_viva": bool(p.content.get("viva_questions")),
                 "has_ppt": bool(p.content.get("ppt_content")),
+                "has_plan": bool(p.content.get("study_plan")),
             }
             for p in preparations
         ],

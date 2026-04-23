@@ -431,35 +431,43 @@ PPT: 8-10 slides. Study plan: 15 days."""
         section_data: Dict,
         db: AsyncSession
     ) -> None:
-        """Update preparation with new section content"""
+        """Update preparation with new section content (merge into existing JSON)"""
         from app.models.preparation import Preparation
-        from sqlalchemy import select, update
+        from sqlalchemy import select
         
-        logger.info(f"Updating preparation {prep_id} with new section data")
+        logger.info(f"Updating preparation {prep_id} with section keys: {list(section_data.keys())}")
         
-        # Get current preparation
-        query = select(Preparation).where(Preparation.id == prep_id)
-        result = await db.execute(query)
-        prep = result.scalar_one_or_none()
-        
-        if not prep:
-            logger.error(f"Preparation {prep_id} not found")
+        if not section_data:
+            logger.warning(f"Empty section_data for prep {prep_id}, skipping update")
             return
         
-        # Merge new section data into existing content
-        updated_content = {**prep.content, **section_data}
-        
-        # Update the preparation
-        update_query = (
-            update(Preparation)
-            .where(Preparation.id == prep_id)
-            .values(content=updated_content, updated_at=datetime.utcnow())
-        )
-        
-        await db.execute(update_query)
-        await db.commit()
-        
-        logger.info(f"Preparation {prep_id} updated successfully")
+        try:
+            # Get current preparation
+            query = select(Preparation).where(Preparation.id == prep_id)
+            result = await db.execute(query)
+            prep = result.scalar_one_or_none()
+            
+            if not prep:
+                logger.error(f"Preparation {prep_id} not found")
+                return
+            
+            # Merge new section data into existing content
+            existing_content = dict(prep.content) if prep.content else {}
+            updated_content = {**existing_content, **section_data}
+            
+            # Use ORM-style assignment for reliable JSON column updates
+            prep.content = updated_content
+            prep.updated_at = datetime.utcnow()
+            
+            await db.commit()
+            await db.refresh(prep)
+            
+            logger.info(f"Preparation {prep_id} updated successfully. Content keys: {list(updated_content.keys())}")
+            
+        except Exception as e:
+            logger.error(f"Failed to update preparation {prep_id}: {e}", exc_info=True)
+            await db.rollback()
+            raise
 
 
 # Global instance

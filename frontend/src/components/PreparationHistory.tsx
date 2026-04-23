@@ -19,7 +19,11 @@ interface HistoryItem {
     created_at: string;
     has_notes: boolean;
     has_questions: boolean;
+    has_predicted: boolean;
     has_mock: boolean;
+    has_viva: boolean;
+    has_ppt: boolean;
+    has_plan: boolean;
 }
 
 interface PreparationHistoryProps {
@@ -143,9 +147,29 @@ export function PreparationHistory({ onSelect, onClose }: PreparationHistoryProp
                                         Questions
                                     </span>
                                 )}
+                                {item.has_predicted && (
+                                    <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-1 rounded">
+                                        Predicted
+                                    </span>
+                                )}
                                 {item.has_mock && (
                                     <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded">
-                                        Mock Test
+                                        Mock
+                                    </span>
+                                )}
+                                {item.has_viva && (
+                                    <span className="text-xs bg-pink-500/20 text-pink-400 px-2 py-1 rounded">
+                                        Viva
+                                    </span>
+                                )}
+                                {item.has_ppt && (
+                                    <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-1 rounded">
+                                        PPT
+                                    </span>
+                                )}
+                                {item.has_plan && (
+                                    <span className="text-xs bg-teal-500/20 text-teal-400 px-2 py-1 rounded">
+                                        Plan
                                     </span>
                                 )}
                             </div>

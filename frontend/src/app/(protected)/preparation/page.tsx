@@ -169,7 +169,7 @@ export default function PreparationPage() {
                     </div>
 
                     {/* Tabs */}
-                    <PreparationTabs data={preparationData} />
+                    <PreparationTabs key={preparationData.id || 'new'} data={preparationData} />
                 </div>
             </div>
         );

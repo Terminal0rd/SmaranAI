@@ -29,11 +29,46 @@ interface PreparationTabsProps {
 export function PreparationTabs({ data }: PreparationTabsProps) {
     const [activeTab, setActiveTab] = useState('syllabus');
 
-    // Track loaded sections
-    const [loadedSections, setLoadedSections] = useState<Set<string>>(new Set(['syllabus']));
+    // Detect which sections already have content (from history load)
+    const getInitialLoadedSections = (): Set<string> => {
+        const sections = new Set(['syllabus']);
+        if (data.notes && Array.isArray(data.notes) && data.notes.length > 0) {
+            sections.add('notes');
+        }
+        if ((data.five_mark_questions?.length > 0) || (data.ten_mark_questions?.length > 0) || (data.predicted_questions?.length > 0)) {
+            sections.add('questions');
+            sections.add('5m');
+            sections.add('10m');
+            sections.add('predicted');
+        }
+        if (data.mock_test && typeof data.mock_test === 'object' && Object.keys(data.mock_test).length > 0) {
+            sections.add('mock_viva');
+            sections.add('mock');
+            sections.add('viva');
+        }
+        if (data.viva_questions && Array.isArray(data.viva_questions) && data.viva_questions.length > 0) {
+            sections.add('mock_viva');
+            sections.add('mock');
+            sections.add('viva');
+        }
+        if (data.ppt_content && Array.isArray(data.ppt_content) && data.ppt_content.length > 0) {
+            sections.add('ppt_plan');
+            sections.add('ppt');
+            sections.add('plan');
+        }
+        if (data.study_plan && Array.isArray(data.study_plan) && data.study_plan.length > 0) {
+            sections.add('ppt_plan');
+            sections.add('ppt');
+            sections.add('plan');
+        }
+        return sections;
+    };
+
+    // Track loaded sections - pre-populated from existing data
+    const [loadedSections, setLoadedSections] = useState<Set<string>>(getInitialLoadedSections);
     const [loadingSection, setLoadingSection] = useState<string | null>(null);
 
-    // Store section data
+    // Store section data - initialized from existing data (history or fresh)
     const [sectionData, setSectionData] = useState<any>({
         notes: data.notes || [],
         five_mark_questions: data.five_mark_questions || [],
