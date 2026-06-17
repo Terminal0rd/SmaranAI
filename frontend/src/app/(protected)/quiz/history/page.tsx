@@ -127,47 +127,86 @@ export default function QuizHistoryPage() {
                             </CardContent>
                         </Card>
 
-                        {/* Questions Review */}
-                        {selectedAttempt.questions?.map((q: any, index: number) => (
-                            <Card key={q.question_id}>
-                                <CardContent className="pt-6">
-                                    <div className="flex items-start gap-3">
-                                        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${q.is_correct
-                                                ? 'bg-green-500/20 text-green-400'
-                                                : 'bg-red-500/20 text-red-400'
-                                            }`}>
-                                            {q.is_correct ? (
-                                                <CheckCircle className="w-5 h-5" />
-                                            ) : (
-                                                <XCircle className="w-5 h-5" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="text-white font-medium mb-3">
+                        {/* Questions Review with Full Options */}
+                        {selectedAttempt.questions?.map((q: any, index: number) => {
+                            const optionLetters = ['A', 'B', 'C', 'D'];
+                            return (
+                                <Card key={q.question_id}>
+                                    <CardContent className="pt-6">
+                                        <div className="flex items-start gap-3 mb-4">
+                                            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${q.is_correct
+                                                    ? 'bg-green-500/20 text-green-400'
+                                                    : 'bg-red-500/20 text-red-400'
+                                                }`}>
+                                                {q.is_correct ? (
+                                                    <CheckCircle className="w-5 h-5" />
+                                                ) : (
+                                                    <XCircle className="w-5 h-5" />
+                                                )}
+                                            </div>
+                                            <p className="text-white font-medium leading-relaxed">
                                                 {index + 1}. {q.question_text}
                                             </p>
-
-                                            {/* User Answer */}
-                                            <div className={`mb-2 p-3 rounded-lg border ${q.is_correct
-                                                    ? 'bg-green-500/5 border-green-500/20'
-                                                    : 'bg-red-500/5 border-red-500/20'
-                                                }`}>
-                                                <p className="text-xs text-slate-400 mb-1">Your Answer:</p>
-                                                <p className="text-white">{q.user_answer || 'No answer'}</p>
-                                            </div>
-
-                                            {/* Correct Answer (if wrong) */}
-                                            {!q.is_correct && (
-                                                <div className="p-3 rounded-lg border bg-green-500/5 border-green-500/20">
-                                                    <p className="text-xs text-slate-400 mb-1">Correct Answer:</p>
-                                                    <p className="text-green-400">{q.correct_answer}</p>
-                                                </div>
-                                            )}
                                         </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+
+                                        {/* All options with color coding */}
+                                        {q.options && q.options.length > 0 ? (
+                                            <div className="space-y-2 ml-11">
+                                                {q.options.map((option: string, optIdx: number) => {
+                                                    const letter = optionLetters[optIdx];
+                                                    const isCorrectOption = letter === q.correct_answer;
+                                                    const isUserAnswer = letter === q.user_answer;
+                                                    const isWrongSelection = isUserAnswer && !q.is_correct;
+
+                                                    let optionClasses = 'p-3 rounded-lg border-2 transition-all text-sm';
+                                                    if (isCorrectOption) {
+                                                        optionClasses += ' bg-green-500/10 border-green-500/40 text-green-300';
+                                                    } else if (isWrongSelection) {
+                                                        optionClasses += ' bg-red-500/10 border-red-500/40 text-red-300';
+                                                    } else {
+                                                        optionClasses += ' bg-slate-800/30 border-slate-700/30 text-slate-400';
+                                                    }
+
+                                                    return (
+                                                        <div key={optIdx} className={optionClasses}>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`font-bold ${isCorrectOption ? 'text-green-400' : isWrongSelection ? 'text-red-400' : 'text-slate-500'}`}>
+                                                                    {letter}.
+                                                                </span>
+                                                                <span>{option}</span>
+                                                                {isCorrectOption && (
+                                                                    <CheckCircle className="w-4 h-4 text-green-400 ml-auto flex-shrink-0" />
+                                                                )}
+                                                                {isWrongSelection && (
+                                                                    <XCircle className="w-4 h-4 text-red-400 ml-auto flex-shrink-0" />
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            /* Fallback for non-MCQ or missing options */
+                                            <div className="ml-11 space-y-2">
+                                                <div className={`p-3 rounded-lg border ${q.is_correct
+                                                        ? 'bg-green-500/5 border-green-500/20'
+                                                        : 'bg-red-500/5 border-red-500/20'
+                                                    }`}>
+                                                    <p className="text-xs text-slate-400 mb-1">Your Answer:</p>
+                                                    <p className="text-white">{q.user_answer || 'No answer'}</p>
+                                                </div>
+                                                {!q.is_correct && (
+                                                    <div className="p-3 rounded-lg border bg-green-500/5 border-green-500/20">
+                                                        <p className="text-xs text-slate-400 mb-1">Correct Answer:</p>
+                                                        <p className="text-green-400">{q.correct_answer}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
                     </div>
                 </div>
             </div>

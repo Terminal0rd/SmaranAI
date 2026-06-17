@@ -41,6 +41,7 @@ class QuizQuestionResult(BaseModel):
     """Question result with correct answer"""
     question_id: str
     question_text: str
+    options: Optional[List[str]] = None  # All MCQ options for display
     user_answer: Optional[str]
     correct_answer: str
     is_correct: bool

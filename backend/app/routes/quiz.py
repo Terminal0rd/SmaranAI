@@ -122,6 +122,7 @@ async def submit_quiz(
             QuizQuestionResult(
                 question_id=q.id,
                 question_text=q.question_text,
+                options=q.options,
                 user_answer=q.user_answer,
                 correct_answer=q.correct_answer,
                 is_correct=q.is_correct or False,
@@ -188,6 +189,7 @@ async def get_quiz_result(
             QuizQuestionResult(
                 question_id=q.id,
                 question_text=q.question_text,
+                options=q.options,
                 user_answer=q.user_answer,
                 correct_answer=q.correct_answer,
                 is_correct=q.is_correct or False,

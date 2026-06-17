@@ -250,8 +250,8 @@ Remember:
             {"role": "user", "content": user_prompt}
         ]
         
-        # 1500 tokens needed for 5 MCQs with options + explanations
-        return await self.chat_completion(messages, max_tokens=1500, temperature=0.3, timeout=600)
+        # 1200 tokens sufficient for 5 MCQs with options + explanations
+        return await self.chat_completion(messages, max_tokens=1200, temperature=0.3, timeout=300)
     
     async def generate_youtube_keywords(
         self,

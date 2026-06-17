@@ -26,19 +26,23 @@ export default function QuizPage() {
     const [result, setResult] = useState<any>(null);
 
     useEffect(() => {
+        let cancelled = false;
         const generateQuiz = async () => {
             try {
                 const response = await quizAPI.generate(sessionId, 5);
+                if (cancelled) return;
                 setAttemptId(response.data.attempt_id);
                 setQuestions(response.data.questions);
             } catch (error) {
+                if (cancelled) return;
                 toast.error('Failed to generate quiz');
                 router.push(`/learn/${sessionId}`);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
         generateQuiz();
+        return () => { cancelled = true; };
     }, [sessionId, router]);
 
     const currentQuestion = questions[currentIndex];
@@ -84,7 +88,7 @@ export default function QuizPage() {
                 <div className="text-center">
                     <Loader2 className="w-10 h-10 text-violet-500 animate-spin mx-auto mb-4" />
                     <p className="text-slate-400">Generating quiz...</p>
-                    <p className="text-sm text-slate-500 mt-2">This may take up to a minute...</p>
+                    <p className="text-sm text-slate-500 mt-2">Preparing questions from your session</p>
                 </div>
             </div>
         );
@@ -115,7 +119,7 @@ export default function QuizPage() {
     if (result) {
         return (
             <div className="min-h-screen bg-slate-950 p-6">
-                <div className="max-w-2xl mx-auto">
+                <div className="max-w-3xl mx-auto">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -151,36 +155,97 @@ export default function QuizPage() {
                         </Card>
                     )}
 
-                    <div className="space-y-4">
-                        {result.questions.map((q: any, i: number) => (
-                            <Card key={q.question_id} variant={q.is_correct ? 'default' : 'default'}>
-                                <CardContent className="flex items-start gap-4">
-                                    <div className={`p-2 rounded-full ${q.is_correct ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
-                                        {q.is_correct ? (
-                                            <CheckCircle className="w-5 h-5 text-green-500" />
-                                        ) : (
-                                            <XCircle className="w-5 h-5 text-red-500" />
-                                        )}
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="text-white mb-2">{q.question_text}</p>
-                                        {!q.is_correct && (
-                                            <p className="text-sm text-slate-400">
-                                                Correct answer: <span className="text-green-400">{q.correct_answer}</span>
-                                            </p>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                    {/* Full Question & Answer Review */}
+                    <div className="space-y-5">
+                        {result.questions.map((q: any, i: number) => {
+                            const optionLetters = ['A', 'B', 'C', 'D'];
+                            return (
+                                <motion.div
+                                    key={q.question_id}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: i * 0.08 }}
+                                >
+                                    <Card>
+                                        <CardContent className="pt-5">
+                                            {/* Question header with status icon */}
+                                            <div className="flex items-start gap-3 mb-4">
+                                                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${q.is_correct ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                                                    {q.is_correct ? (
+                                                        <CheckCircle className="w-5 h-5 text-green-500" />
+                                                    ) : (
+                                                        <XCircle className="w-5 h-5 text-red-500" />
+                                                    )}
+                                                </div>
+                                                <p className="text-white font-medium text-base leading-relaxed">
+                                                    {i + 1}. {q.question_text}
+                                                </p>
+                                            </div>
+
+                                            {/* All options with color coding */}
+                                            {q.options && q.options.length > 0 ? (
+                                                <div className="space-y-2 ml-11">
+                                                    {q.options.map((option: string, optIdx: number) => {
+                                                        const letter = optionLetters[optIdx];
+                                                        const isCorrectOption = letter === q.correct_answer;
+                                                        const isUserAnswer = letter === q.user_answer;
+                                                        const isWrongSelection = isUserAnswer && !q.is_correct;
+
+                                                        let optionClasses = 'p-3 rounded-lg border-2 transition-all text-sm';
+                                                        if (isCorrectOption) {
+                                                            optionClasses += ' bg-green-500/10 border-green-500/40 text-green-300';
+                                                        } else if (isWrongSelection) {
+                                                            optionClasses += ' bg-red-500/10 border-red-500/40 text-red-300';
+                                                        } else {
+                                                            optionClasses += ' bg-slate-800/30 border-slate-700/30 text-slate-400';
+                                                        }
+
+                                                        return (
+                                                            <div key={optIdx} className={optionClasses}>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`font-bold ${isCorrectOption ? 'text-green-400' : isWrongSelection ? 'text-red-400' : 'text-slate-500'}`}>
+                                                                        {letter}.
+                                                                    </span>
+                                                                    <span>{option}</span>
+                                                                    {isCorrectOption && (
+                                                                        <CheckCircle className="w-4 h-4 text-green-400 ml-auto flex-shrink-0" />
+                                                                    )}
+                                                                    {isWrongSelection && (
+                                                                        <XCircle className="w-4 h-4 text-red-400 ml-auto flex-shrink-0" />
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                /* Fallback for non-MCQ or missing options */
+                                                <div className="ml-11 space-y-2">
+                                                    <div className={`p-3 rounded-lg border ${q.is_correct ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                                                        <p className="text-xs text-slate-400 mb-1">Your Answer:</p>
+                                                        <p className="text-white">{q.user_answer || 'No answer'}</p>
+                                                    </div>
+                                                    {!q.is_correct && (
+                                                        <div className="p-3 rounded-lg border bg-green-500/5 border-green-500/20">
+                                                            <p className="text-xs text-slate-400 mb-1">Correct Answer:</p>
+                                                            <p className="text-green-400">{q.correct_answer}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                </motion.div>
+                            );
+                        })}
                     </div>
 
                     <div className="flex gap-4 mt-8">
                         <Button variant="outline" onClick={() => router.push(`/learn/${sessionId}`)} className="flex-1">
                             Back to Session
                         </Button>
-                        <Button onClick={() => router.push('/dashboard')} className="flex-1">
-                            Dashboard
+                        <Button onClick={() => router.push('/quiz/history')} className="flex-1">
+                            Quiz History
                         </Button>
                     </div>
                 </div>
