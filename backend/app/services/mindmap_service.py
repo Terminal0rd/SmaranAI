@@ -300,11 +300,56 @@ class MindMapService:
                 # Extract single capitalized words (min 3 chars)
                 single_word = re.findall(r'\b[A-Z][a-z]{2,}\b', text)
                 
-                # Filter common words
-                exclude = {'The', 'This', 'That', 'These', 'Those', 'What', 'When', 
-                          'Where', 'Why', 'How', 'Which', 'Who', 'And', 'But', 'For'}
+                # Filter common/generic words that aren't real concepts
+                exclude = {
+                    # Common English words
+                    'The', 'This', 'That', 'These', 'Those', 'What', 'When', 
+                    'Where', 'Why', 'How', 'Which', 'Who', 'And', 'But', 'For',
+                    'Not', 'Are', 'Was', 'Were', 'Has', 'Have', 'Had', 'Can',
+                    'Could', 'Would', 'Should', 'Will', 'May', 'Might', 'Must',
+                    'Let', 'Its', 'Our', 'Your', 'Their', 'Here', 'There',
+                    'Also', 'Each', 'Every', 'All', 'Any', 'Some', 'Most',
+                    'Other', 'Both', 'Such', 'Only', 'Very', 'Just', 'More',
+                    'Than', 'Then', 'Now', 'About', 'After', 'Before',
+                    # Generic academic/structural terms (NOT real concepts)
+                    'Definition', 'Key', 'Explanation', 'Example', 'Examples',
+                    'Characteristics', 'Properties', 'Features', 'Types',
+                    'Mathematical', 'Representation', 'Description',
+                    'Introduction', 'Overview', 'Summary', 'Conclusion',
+                    'Advantages', 'Disadvantages', 'Applications',
+                    'Note', 'Notes', 'Important', 'Step', 'Steps',
+                    'Formula', 'Method', 'Methods', 'Approach', 'Process',
+                    'Table', 'Figure', 'Diagram', 'Chart', 'Graph',
+                    'Input', 'Output', 'Result', 'Results', 'Answer',
+                    'Question', 'Questions', 'Problem', 'Solution',
+                    'Consider', 'Suppose', 'Assume', 'Given', 'Find',
+                    'Calculate', 'Determine', 'Explain', 'Describe',
+                    'Compare', 'Contrast', 'Discuss', 'Evaluate',
+                    'True', 'False', 'Yes', 'None', 'Null',
+                    'First', 'Second', 'Third', 'Next', 'Last',
+                    'Below', 'Above', 'Following', 'Previous',
+                    'Basic', 'Simple', 'Complex', 'Common', 'General',
+                    'Main', 'Major', 'Minor', 'Primary', 'Secondary',
+                    # Filler multi-word patterns
+                    'Key Characteristics', 'Key Features', 'Key Points',
+                    'Mathematical Representation', 'Key Concepts',
+                    'Important Points', 'Main Features',
+                    'Getting Started',
+                }
                 
-                concepts = multi_word + [w for w in single_word if w not in exclude]
+                # Also filter multi-word terms that start with generic words
+                generic_prefixes = {'key ', 'main ', 'basic ', 'simple ', 'general ', 'important '}
+                
+                filtered_multi = [
+                    w for w in multi_word 
+                    if w not in exclude and not any(w.lower().startswith(p) for p in generic_prefixes)
+                ]
+                filtered_single = [
+                    w for w in single_word 
+                    if w not in exclude and len(w) > 3  # Skip very short words
+                ]
+                
+                concepts = filtered_multi + filtered_single
                 all_concepts.extend(concepts)
         
         # Get unique concepts

@@ -164,7 +164,7 @@ Return ONLY valid JSON with this structure:
 
 Generate 4-5 units. Each unit should have 3-5 topics."""
         
-        response = await self._call_llm(prompt, max_tokens=600)  # REDUCED for speed
+        response = await self._call_llm(prompt, max_tokens=1000)  # Syllabus is short
         return self._safe_json_parse(response, {"syllabus": []})
     
     async def _generate_notes(self, subject: str, university: str, rag_context: str) -> Dict:
@@ -188,8 +188,8 @@ Return ONLY valid JSON:
 
 Generate 5 detailed topic notes."""
         
-        # INCREASED: Notes need more tokens for detailed explanations
-        response = await self._call_llm(prompt, max_tokens=1000, timeout=180)
+        # Notes need more tokens for detailed explanations
+        response = await self._call_llm(prompt, max_tokens=2000, timeout=120)
         return self._safe_json_parse(response, {"notes": []})
     
     async def _generate_questions(self, subject: str, university: str, exam_type: str) -> Dict:
@@ -213,8 +213,8 @@ Return ONLY valid JSON:
 
 Generate: 8 five-mark, 6 ten-mark, 5 predicted questions."""
         
-        # INCREASED: Need 1200 tokens for 8+6+5=19 questions
-        response = await self._call_llm(prompt, max_tokens=1200, timeout=180)
+        # Need enough tokens for 8+6+5=19 questions
+        response = await self._call_llm(prompt, max_tokens=2500, timeout=120)
         return self._safe_json_parse(response, {"five_mark_questions": [], "ten_mark_questions": [], "predicted_questions": []})
     
     async def _generate_mock_and_viva(self, subject: str, university: str, exam_type: str) -> Dict:
@@ -252,8 +252,8 @@ Return ONLY valid JSON:
 
 Mock test: 50 marks total. Viva: 10 questions."""
         
-        # INCREASED: Need 1200 tokens for full mock test (3 sections + viva)
-        response = await self._call_llm(prompt, max_tokens=1200, timeout=180)
+        # Need enough tokens for full mock test (3 sections + viva)
+        response = await self._call_llm(prompt, max_tokens=2500, timeout=120)
         return self._safe_json_parse(response, {"mock_test": {}, "viva_questions": []})
     
     async def _generate_ppt_and_plan(self, subject: str, university: str, exam_date: str | None) -> Dict:
@@ -288,8 +288,8 @@ Return ONLY valid JSON:
 
 PPT: 8-10 slides. Study plan: 15 days."""
         
-        # INCREASED: Need 300s timeout - 1800 tokens takes longer on CPU
-        response = await self._call_llm(prompt, max_tokens=1800, timeout=300)
+        # PPT + study plan needs more tokens
+        response = await self._call_llm(prompt, max_tokens=3000, timeout=120)
         return self._safe_json_parse(response, {"ppt_content": [], "study_plan": []})
     
     async def _call_llm(self, prompt: str, max_tokens: int = 600, timeout: int = 120) -> str:

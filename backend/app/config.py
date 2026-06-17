@@ -16,8 +16,16 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440  # 24 hours
     
-    # LLM Server (Ollama with Qwen 2.5)
+    # LLM Provider: "groq" for Groq cloud API, "ollama" for local Ollama
+    llm_provider: str = "groq"
+    
+    # Groq API (fast cloud LLM)
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+    
+    # Ollama (local LLM - fallback)
     llm_server_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen2.5:7b-instruct"
     llm_max_tokens: int = 350
     
     # Embeddings

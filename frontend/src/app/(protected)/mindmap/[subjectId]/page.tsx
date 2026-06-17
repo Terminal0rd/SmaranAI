@@ -1,5 +1,6 @@
 /**
  * MindMap Page - Interactive Knowledge Map
+ * Enhanced with: concept descriptions on click, quiz-colored nodes
  */
 'use client';
 
@@ -25,10 +26,11 @@ import 'reactflow/dist/style.css';
 import {
     ArrowLeft, Loader2, AlertCircle, RefreshCw, X,
     BookOpen, Target, Brain, CheckCircle, AlertTriangle,
-    Circle, LayoutGrid, GitBranch, Layers, Sparkles, Star
+    Circle, LayoutGrid, GitBranch, Layers, Sparkles, Star,
+    Info, TrendingUp, XCircle
 } from 'lucide-react';
 import { Button, Card, CardContent } from '@/components/ui';
-import { mindmapAPI, subjectsAPI, sessionsAPI } from '@/lib/api';
+import { mindmapAPI, subjectsAPI, sessionsAPI, quizAPI } from '@/lib/api';
 
 type LayoutType = 'default' | 'tree' | 'radial' | 'grid';
 
@@ -69,13 +71,21 @@ const calculateLayouts = {
     }
 };
 
-// Custom Node Component
+// Custom Node Component with quiz-aware coloring
 const ConceptNode = memo(({ data, selected }: NodeProps) => {
     const getStatusStyles = () => {
+        // Quiz-based coloring takes priority
+        if (data.quizStatus === 'correct') {
+            return { border: 'border-green-500', bg: 'bg-green-500/10', progressColor: 'bg-green-500', glow: 'shadow-green-500/20' };
+        }
+        if (data.quizStatus === 'wrong') {
+            return { border: 'border-red-500', bg: 'bg-red-500/10', progressColor: 'bg-red-500', glow: 'shadow-red-500/20' };
+        }
+        // Fall back to mastery-based coloring
         switch (data.status) {
-            case 'weak': return { border: 'border-red-500', bg: 'bg-red-500/10', progressColor: 'bg-red-500' };
-            case 'strong': return { border: 'border-green-500', bg: 'bg-green-500/10', progressColor: 'bg-green-500' };
-            default: return { border: 'border-violet-500', bg: 'bg-violet-500/10', progressColor: 'bg-violet-500' };
+            case 'weak': return { border: 'border-red-500', bg: 'bg-red-500/10', progressColor: 'bg-red-500', glow: '' };
+            case 'strong': return { border: 'border-green-500', bg: 'bg-green-500/10', progressColor: 'bg-green-500', glow: '' };
+            default: return { border: 'border-violet-500', bg: 'bg-violet-500/10', progressColor: 'bg-violet-500', glow: '' };
         }
     };
 
@@ -94,12 +104,15 @@ const ConceptNode = memo(({ data, selected }: NodeProps) => {
                     backdrop-blur-sm cursor-pointer transition-all duration-300
                     ${styles.border} ${styles.bg}
                     ${selected ? 'shadow-lg ring-2 ring-white/20' : 'hover:shadow-md'}
+                    ${styles.glow ? `shadow-lg ${styles.glow}` : ''}
                 `}
             >
                 <div className="flex items-start justify-between gap-2 mb-2">
                     <p className="text-white font-medium text-sm leading-tight">{data.label}</p>
-                    {data.status === 'weak' && <AlertTriangle className="w-3 h-3 text-red-400" />}
-                    {data.status === 'strong' && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />}
+                    {data.quizStatus === 'correct' && <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" />}
+                    {data.quizStatus === 'wrong' && <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />}
+                    {!data.quizStatus && data.status === 'weak' && <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />}
+                    {!data.quizStatus && data.status === 'strong' && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400 flex-shrink-0" />}
                 </div>
                 <div className="space-y-1">
                     <div className="h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
@@ -153,36 +166,71 @@ function LayoutSwitcher({ current, onChange }: { current: LayoutType; onChange: 
     );
 }
 
-// Legend
-function Legend() {
+// Legend - updated with quiz colors
+function Legend({ hasQuizData }: { hasQuizData: boolean }) {
     return (
         <div className="absolute bottom-4 left-4 z-10">
             <Card className="!bg-slate-900/90 backdrop-blur-sm border-slate-700">
                 <CardContent className="p-3">
-                    <p className="text-xs text-slate-400 mb-2">Mastery</p>
+                    <p className="text-xs text-slate-400 mb-2">{hasQuizData ? 'Quiz Performance' : 'Mastery'}</p>
                     <div className="space-y-1.5">
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-green-500" />
-                            <span className="text-xs text-slate-300">Strong</span>
+                            <span className="text-xs text-slate-300">{hasQuizData ? 'Correct in Quiz' : 'Strong'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-violet-500" />
-                            <span className="text-xs text-slate-300">Learning</span>
+                            <span className="text-xs text-slate-300">{hasQuizData ? 'Not Quizzed' : 'Learning'}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-red-500" />
-                            <span className="text-xs text-slate-300">Review</span>
+                            <span className="text-xs text-slate-300">{hasQuizData ? 'Wrong in Quiz' : 'Needs Review'}</span>
                         </div>
                     </div>
+                    {hasQuizData && (
+                        <p className="text-[10px] text-slate-500 mt-2 italic">Based on your quiz results</p>
+                    )}
                 </CardContent>
             </Card>
         </div>
     );
 }
 
-// Concept Panel
-function ConceptPanel({ node, onClose, onStudy, onQuiz, loading }: any) {
+// Enhanced Concept Panel with description + quiz stats
+function ConceptPanel({ node, nodeId, onClose, onStudy, onQuiz, loading, quizStats }: any) {
     const masteryPercent = Math.round((node.mastery_level || 0) * 100);
+    const [description, setDescription] = useState<string | null>(null);
+    const [descLoading, setDescLoading] = useState(false);
+
+    // Fetch description when panel opens
+    useEffect(() => {
+        if (!nodeId) return;
+        
+        // Check if we have a cached description in node data
+        if (node.description) {
+            setDescription(node.description);
+            return;
+        }
+
+        let cancelled = false;
+        const fetchDescription = async () => {
+            setDescLoading(true);
+            try {
+                const res = await mindmapAPI.describeNode(nodeId);
+                if (!cancelled) {
+                    setDescription(res.data.description);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setDescription(`A concept in this subject. Click 'Study' to learn more.`);
+                }
+            } finally {
+                if (!cancelled) setDescLoading(false);
+            }
+        };
+        fetchDescription();
+        return () => { cancelled = true; };
+    }, [nodeId, node.description]);
 
     return (
         <motion.div
@@ -193,21 +241,28 @@ function ConceptPanel({ node, onClose, onStudy, onQuiz, loading }: any) {
         >
             <Card className="!bg-slate-900/95 backdrop-blur-md border-slate-700">
                 <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-4">
-                        <div>
+                    {/* Header */}
+                    <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
                             <h3 className="text-lg font-semibold text-white">{node.label}</h3>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${node.status === 'weak' ? 'bg-red-500/20 text-red-400' :
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${node.quizStatus === 'correct' ? 'bg-green-500/20 text-green-400' :
+                                    node.quizStatus === 'wrong' ? 'bg-red-500/20 text-red-400' :
+                                    node.status === 'weak' ? 'bg-red-500/20 text-red-400' :
                                     node.status === 'strong' ? 'bg-green-500/20 text-green-400' :
                                         'bg-violet-500/20 text-violet-400'
                                 }`}>
-                                {node.status === 'weak' ? 'Needs Review' : node.status === 'strong' ? 'Mastered' : 'Learning'}
+                                {node.quizStatus === 'correct' ? '✓ Quiz Correct' :
+                                 node.quizStatus === 'wrong' ? '✗ Quiz Wrong' :
+                                 node.status === 'weak' ? 'Needs Review' : 
+                                 node.status === 'strong' ? 'Mastered' : 'Learning'}
                             </span>
                         </div>
-                        <button onClick={onClose} className="text-slate-400 hover:text-white">
+                        <button onClick={onClose} className="text-slate-400 hover:text-white p-1">
                             <X className="w-5 h-5" />
                         </button>
                     </div>
 
+                    {/* Mastery Bar */}
                     <div className="mb-4">
                         <div className="flex justify-between text-sm mb-1">
                             <span className="text-slate-400">Mastery</span>
@@ -221,6 +276,47 @@ function ConceptPanel({ node, onClose, onStudy, onQuiz, loading }: any) {
                         </div>
                     </div>
 
+                    {/* Description */}
+                    <div className="mb-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Info className="w-3.5 h-3.5 text-violet-400" />
+                            <span className="text-xs font-medium text-violet-400">About this concept</span>
+                        </div>
+                        {descLoading ? (
+                            <div className="flex items-center gap-2 py-2">
+                                <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                                <span className="text-xs text-slate-400">Generating description...</span>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-slate-300 leading-relaxed">
+                                {description || 'No description available.'}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Quiz Stats (if available) */}
+                    {quizStats && (
+                        <div className="mb-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                            <div className="flex items-center gap-2 mb-2">
+                                <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                                <span className="text-xs font-medium text-amber-400">Quiz Performance</span>
+                            </div>
+                            <div className="flex items-center gap-4 text-sm">
+                                <div className="flex items-center gap-1">
+                                    <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+                                    <span className="text-green-400 font-medium">{quizStats.correct}</span>
+                                    <span className="text-slate-500">correct</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <XCircle className="w-3.5 h-3.5 text-red-400" />
+                                    <span className="text-red-400 font-medium">{quizStats.wrong}</span>
+                                    <span className="text-slate-500">wrong</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Action Buttons */}
                     <div className="grid grid-cols-2 gap-2">
                         <Button variant="outline" size="sm" onClick={onStudy} disabled={loading}>
                             <BookOpen className="w-4 h-4 mr-1" />Study
@@ -236,11 +332,11 @@ function ConceptPanel({ node, onClose, onStudy, onQuiz, loading }: any) {
 }
 
 // Stats Bar
-function StatsBar({ nodes }: { nodes: Node[] }) {
+function StatsBar({ nodes, hasQuizData }: { nodes: Node[]; hasQuizData: boolean }) {
     const stats = {
         total: nodes.length,
-        strong: nodes.filter(n => n.data.status === 'strong').length,
-        weak: nodes.filter(n => n.data.status === 'weak').length,
+        strong: nodes.filter(n => n.data.quizStatus === 'correct' || n.data.status === 'strong').length,
+        weak: nodes.filter(n => n.data.quizStatus === 'wrong' || n.data.status === 'weak').length,
     };
 
     return (
@@ -266,11 +362,14 @@ function MindMapFlow() {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [selectedNode, setSelectedNode] = useState<any>(null);
+    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [layout, setLayout] = useState<LayoutType>('default');
     const [rawNodes, setRawNodes] = useState<any[]>([]);
     const [rawEdges, setRawEdges] = useState<any[]>([]);
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+    const [quizTopicStats, setQuizTopicStats] = useState<Record<string, { correct: number; wrong: number }>>({});
+    const [hasQuizData, setHasQuizData] = useState(false);
 
     // Apply layout
     useEffect(() => {
@@ -282,26 +381,89 @@ function MindMapFlow() {
         }
     }, [layout, rawNodes, rawEdges, setNodes, fitView]);
 
+    // Fetch quiz history for this subject and build topic stats
+    const fetchQuizStats = useCallback(async () => {
+        try {
+            const historyRes = await quizAPI.getHistory(subjectId);
+            const attempts = historyRes.data || [];
+            
+            if (attempts.length === 0) return {};
+
+            const topicStats: Record<string, { correct: number; wrong: number }> = {};
+
+            // Fetch detailed results for each attempt to get question-level data
+            for (const attempt of attempts.slice(0, 5)) { // Last 5 quizzes
+                try {
+                    const detailRes = await quizAPI.getAttempt(attempt.id);
+                    const questions = detailRes.data.questions || [];
+                    
+                    for (const q of questions) {
+                        const concept = q.source_concept || '';
+                        if (!concept) continue;
+                        
+                        if (!topicStats[concept.toLowerCase()]) {
+                            topicStats[concept.toLowerCase()] = { correct: 0, wrong: 0 };
+                        }
+                        if (q.is_correct) {
+                            topicStats[concept.toLowerCase()].correct++;
+                        } else {
+                            topicStats[concept.toLowerCase()].wrong++;
+                        }
+                    }
+                } catch { /* skip failed attempt fetches */ }
+            }
+
+            return topicStats;
+        } catch {
+            return {};
+        }
+    }, [subjectId]);
+
     const fetchMindmap = useCallback(async () => {
         setLoading(true);
         try {
-            const [subjectRes, mindmapRes] = await Promise.all([
+            const [subjectRes, mindmapRes, topicStats] = await Promise.all([
                 subjectsAPI.getById(subjectId),
                 mindmapAPI.get(subjectId),
+                fetchQuizStats(),
             ]);
 
             setSubject(subjectRes.data);
+            setQuizTopicStats(topicStats);
+            const hasStats = Object.keys(topicStats).length > 0;
+            setHasQuizData(hasStats);
 
-            const flowNodes: Node[] = (mindmapRes.data.nodes || []).map((node: any, i: number) => ({
-                id: String(node.id),
-                type: 'concept',
-                position: { x: node.x_position ?? i * 200, y: node.y_position ?? i * 100 },
-                data: {
-                    label: node.label,
-                    status: node.status || 'learning',
-                    mastery_level: node.mastery_level || 0,
-                },
-            }));
+            const flowNodes: Node[] = (mindmapRes.data.nodes || []).map((node: any, i: number) => {
+                // Determine quiz status for this node
+                let quizStatus: string | null = null;
+                if (hasStats) {
+                    const label = (node.label || '').toLowerCase();
+                    // Check exact match or partial match with quiz topics
+                    for (const [topic, stats] of Object.entries(topicStats)) {
+                        if (label.includes(topic) || topic.includes(label)) {
+                            if (stats.correct > stats.wrong) {
+                                quizStatus = 'correct';
+                            } else if (stats.wrong > 0) {
+                                quizStatus = 'wrong';
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                return {
+                    id: String(node.id),
+                    type: 'concept',
+                    position: { x: node.x_position ?? i * 200, y: node.y_position ?? i * 100 },
+                    data: {
+                        label: node.label,
+                        description: node.description || null,
+                        status: node.status || 'learning',
+                        mastery_level: node.mastery_level || 0,
+                        quizStatus,
+                    },
+                };
+            });
 
             const flowEdges: Edge[] = (mindmapRes.data.edges || []).map((edge: any) => ({
                 id: String(edge.id),
@@ -322,13 +484,26 @@ function MindMapFlow() {
         } finally {
             setLoading(false);
         }
-    }, [subjectId, setNodes, setEdges]);
+    }, [subjectId, setNodes, setEdges, fetchQuizStats]);
 
     useEffect(() => { fetchMindmap(); }, [fetchMindmap]);
 
     const handleNodeClick = useCallback((event: any, node: Node) => {
         setSelectedNode(node.data);
+        setSelectedNodeId(node.id);
     }, []);
+
+    // Get quiz stats for the selected node
+    const selectedQuizStats = useMemo(() => {
+        if (!selectedNode || !hasQuizData) return null;
+        const label = (selectedNode.label || '').toLowerCase();
+        for (const [topic, stats] of Object.entries(quizTopicStats)) {
+            if (label.includes(topic) || topic.includes(label)) {
+                return stats;
+            }
+        }
+        return null;
+    }, [selectedNode, quizTopicStats, hasQuizData]);
 
     const handleStudy = async () => {
         if (!selectedNode) return;
@@ -377,12 +552,12 @@ function MindMapFlow() {
                             <span className="text-2xl">{subject?.icon || '🧠'}</span>
                             <div>
                                 <h1 className="text-white font-semibold">{subject?.name}</h1>
-                                <p className="text-xs text-slate-400">Knowledge Map</p>
+                                <p className="text-xs text-slate-400">Knowledge Map {hasQuizData && '• Quiz results applied'}</p>
                             </div>
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
-                        <StatsBar nodes={nodes} />
+                        <StatsBar nodes={nodes} hasQuizData={hasQuizData} />
                         <Button variant="ghost" size="sm" onClick={fetchMindmap}><RefreshCw className="w-4 h-4" /></Button>
                     </div>
                 </div>
@@ -407,22 +582,30 @@ function MindMapFlow() {
                             <Controls style={{ background: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }} />
                             <MiniMap
                                 style={{ background: '#0f172a', borderRadius: '8px' }}
-                                nodeColor={n => n.data?.status === 'strong' ? '#22c55e' : n.data?.status === 'weak' ? '#ef4444' : '#8b5cf6'}
+                                nodeColor={n => {
+                                    if (n.data?.quizStatus === 'correct') return '#22c55e';
+                                    if (n.data?.quizStatus === 'wrong') return '#ef4444';
+                                    if (n.data?.status === 'strong') return '#22c55e';
+                                    if (n.data?.status === 'weak') return '#ef4444';
+                                    return '#8b5cf6';
+                                }}
                             />
                         </ReactFlow>
 
                         <LayoutSwitcher current={layout} onChange={setLayout} />
-                        <Legend />
+                        <Legend hasQuizData={hasQuizData} />
 
                         <AnimatePresence>
                             {selectedNode && (
                                 <ConceptPanel
                                     key="concept-panel"
                                     node={selectedNode}
-                                    onClose={() => setSelectedNode(null)}
+                                    nodeId={selectedNodeId}
+                                    onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }}
                                     onStudy={handleStudy}
                                     onQuiz={handleQuiz}
                                     loading={actionLoading}
+                                    quizStats={selectedQuizStats}
                                 />
                             )}
                         </AnimatePresence>

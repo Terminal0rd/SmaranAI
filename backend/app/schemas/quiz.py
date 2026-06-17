@@ -63,6 +63,8 @@ class QuizAttemptResponse(BaseModel):
     id: str
     subject_id: str
     session_id: Optional[str]
+    subject_name: Optional[str] = None
+    session_title: Optional[str] = None
     score: float
     total_questions: int
     correct_answers: int

@@ -325,9 +325,14 @@ export default function QuizHistoryPage() {
                                                 {/* Info */}
                                                 <div className="flex-1">
                                                     <p className="text-white font-medium">
-                                                        {attempt.total_questions} Questions
+                                                        {attempt.subject_name || 'Quiz'} — {attempt.total_questions} Questions
                                                     </p>
                                                     <div className="flex items-center gap-4 mt-1">
+                                                        {attempt.session_title && (
+                                                            <span className="text-sm text-slate-500">
+                                                                {attempt.session_title}
+                                                            </span>
+                                                        )}
                                                         <span className="text-sm text-slate-400 flex items-center gap-1">
                                                             <Clock className="w-3 h-3" />
                                                             {formatDate(attempt.completed_at)}

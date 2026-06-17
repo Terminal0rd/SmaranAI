@@ -66,9 +66,9 @@ class QuizService:
         
         # STEP 2: Extract and preprocess content from messages
         content_parts = []
-        for msg in messages[:3]:  # Use top 3 most recent for speed
-            # Take first 600 chars from each message
-            content_parts.append(msg.content[:600])
+        for msg in messages[:5]:  # Use top 5 most recent
+            # Take first 1000 chars from each message
+            content_parts.append(msg.content[:1000])
         
         # STEP 3: Get RAG chunks that were used in session (top 3)
         search_query = " ".join([m.content[:200] for m in messages[:2]])
@@ -88,7 +88,7 @@ class QuizService:
         
         # STEP 4: Combine and preprocess content (strip markdown, limit size)
         raw_content = "\n\n".join(content_parts)
-        full_content = self._preprocess_session_content(raw_content, max_chars=1200)
+        full_content = self._preprocess_session_content(raw_content, max_chars=3000)
         
         if len(full_content) < 200:
             raise ValueError(

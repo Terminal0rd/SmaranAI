@@ -44,7 +44,7 @@ export default function DashboardPage() {
                 setLocalSubjects(subjectsRes.data);
                 setSubjects(subjectsRes.data);
                 setSessions(sessionsRes.data.slice(0, 5));
-                setPreparations(preparationsRes.data || []);
+                setPreparations(preparationsRes?.preparations || preparationsRes?.data?.preparations || []);
                 setDashboardData(progressRes.data);
             } catch (error) {
                 console.error('Failed to fetch dashboard data:', error);

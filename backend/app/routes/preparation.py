@@ -25,18 +25,46 @@ async def generate_preparation(
     """
     Generate initial semester preparation (syllabus only - fast load)
     
-    This endpoint creates syllabus breakdown in 5-10 seconds.
-    Other sections are generated on-demand via /generate-section:
-    - Smart notes per topic
-    - Practice questions (5M & 10M)
-    - Predicted important questions
-    - Mock test
-    - Viva questions
-    - PPT content structure
-    - Study planner schedule
+    SMART CACHING: If a preparation already exists for this user+subject,
+    returns the existing one instead of regenerating.
     """
+    from app.models.preparation import Preparation
+    from sqlalchemy import select, func
+    
     try:
         logger.info(f"User {current_user.id} requesting preparation for {request.subject}")
+        
+        # STEP 1: Check if preparation already exists for this user + subject (case-insensitive)
+        existing_query = (
+            select(Preparation)
+            .where(
+                Preparation.user_id == current_user.id,
+                func.lower(Preparation.subject) == request.subject.strip().lower()
+            )
+            .order_by(Preparation.updated_at.desc())
+            .limit(1)
+        )
+        existing_result = await db.execute(existing_query)
+        existing_prep = existing_result.scalar_one_or_none()
+        
+        if existing_prep and existing_prep.content:
+            # Check if it has at least a syllabus (minimum valid preparation)
+            content = existing_prep.content
+            has_syllabus = content.get("syllabus") and len(content.get("syllabus", [])) > 0
+            
+            if has_syllabus:
+                logger.info(f"Found existing preparation ID {existing_prep.id} for '{request.subject}', returning cached version")
+                return {
+                    **content,
+                    "id": existing_prep.id,
+                    "subject": existing_prep.subject,
+                    "university": existing_prep.university,
+                    "exam_type": existing_prep.exam_type,
+                    "exam_date": existing_prep.exam_date,
+                }
+        
+        # STEP 2: No existing preparation found — generate new one
+        logger.info(f"No existing preparation found for '{request.subject}', generating new...")
         
         # Generate initial preparation (syllabus only)
         result = await preparation_service.generate_preparation(
@@ -95,6 +123,47 @@ async def generate_section(
     try:
         logger.info(f"Section request - prep_id: {prep_id}, section: {section}, subject: {subject}")
         logger.info(f"User {current_user.id} requesting section '{section}' for {subject}")
+        
+        # STEP 1: Check if this section already exists in the database
+        if prep_id:
+            from app.models.preparation import Preparation
+            from sqlalchemy import select as sel
+            
+            query = sel(Preparation).where(Preparation.id == prep_id, Preparation.user_id == current_user.id)
+            db_result = await db.execute(query)
+            existing_prep = db_result.scalar_one_or_none()
+            
+            if existing_prep and existing_prep.content:
+                content = existing_prep.content
+                
+                # Map section name to content keys and check if they have real data
+                section_keys_map = {
+                    "notes": ["notes"],
+                    "questions": ["five_mark_questions", "ten_mark_questions", "predicted_questions"],
+                    "mock_viva": ["mock_test", "viva_questions"],
+                    "ppt_plan": ["ppt_content", "study_plan"],
+                }
+                
+                keys_to_check = section_keys_map.get(section, [])
+                has_existing_data = False
+                
+                for key in keys_to_check:
+                    val = content.get(key)
+                    if isinstance(val, list) and len(val) > 0:
+                        has_existing_data = True
+                        break
+                    if isinstance(val, dict) and len(val) > 0:
+                        has_existing_data = True
+                        break
+                
+                if has_existing_data:
+                    logger.info(f"Section '{section}' already exists in DB for prep {prep_id}, returning cached version")
+                    # Return only the relevant keys for this section
+                    cached_result = {key: content.get(key, [] if key != "mock_test" else {}) for key in keys_to_check}
+                    return cached_result
+        
+        # STEP 2: Section not in DB or empty — generate it
+        logger.info(f"Section '{section}' not found in DB, generating fresh...")
         
         # Generate requested section
         result = await preparation_service.generate_section(

@@ -14,7 +14,8 @@ import {
     Upload,
     LogOut,
     Menu,
-    X
+    X,
+    GraduationCap
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -23,7 +24,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/learn', label: 'Learn', icon: BookOpen },
-    // Mind Map removed - access from subject pages
+    { href: '/preparation', label: 'Prep Mode', icon: GraduationCap },
     { href: '/progress', label: 'Progress', icon: Target },
     { href: '/upload', label: 'Upload', icon: Upload },
 ];

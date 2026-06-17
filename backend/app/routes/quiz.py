@@ -139,10 +139,14 @@ async def get_quiz_history(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get quiz history"""
+    """Get quiz history with subject and session names"""
+    from sqlalchemy.orm import selectinload
+    
     query = select(QuizAttempt).where(
         QuizAttempt.user_id == current_user.id,
         QuizAttempt.completed_at.isnot(None)
+    ).options(
+        selectinload(QuizAttempt.session),
     )
     
     if subject_id:
@@ -152,7 +156,24 @@ async def get_quiz_history(
     result = await db.execute(query)
     attempts = result.scalars().all()
     
-    return [QuizAttemptResponse.model_validate(a) for a in attempts]
+    # Build responses with subject/session names
+    responses = []
+    # Batch load all subject names
+    subject_ids = list(set(a.subject_id for a in attempts))
+    if subject_ids:
+        from app.models.subject import Subject
+        sub_result = await db.execute(select(Subject).where(Subject.id.in_(subject_ids)))
+        subject_map = {s.id: s.name for s in sub_result.scalars().all()}
+    else:
+        subject_map = {}
+    
+    for a in attempts:
+        resp = QuizAttemptResponse.model_validate(a)
+        resp.subject_name = subject_map.get(a.subject_id, "Unknown Subject")
+        resp.session_title = a.session.title if a.session else None
+        responses.append(resp)
+    
+    return responses
 
 
 @router.get("/{attempt_id}", response_model=QuizResultResponse)

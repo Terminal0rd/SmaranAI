@@ -107,3 +107,72 @@ async def update_node(
     await db.refresh(node)
     
     return MindMapNodeResponse.model_validate(node)
+
+
+@router.get("/node/{node_id}/describe")
+async def describe_node(
+    node_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get or generate a short description for a concept node.
+    Generates once with LLM, then caches in the DB for instant retrieval.
+    """
+    from sqlalchemy import select
+    from app.models.mindmap import MindMapNode
+    from app.services.llm_service import llm_service
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Get the node
+    result = await db.execute(
+        select(MindMapNode).where(
+            MindMapNode.id == node_id,
+            MindMapNode.user_id == current_user.id
+        )
+    )
+    node = result.scalar_one_or_none()
+    
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    
+    # Return cached description if exists
+    if node.description:
+        return {"node_id": node.id, "label": node.label, "description": node.description}
+    
+    # Generate description with LLM
+    try:
+        # Get subject name for context
+        from app.models.subject import Subject
+        sub_result = await db.execute(
+            select(Subject).where(Subject.id == node.subject_id)
+        )
+        subject = sub_result.scalar_one_or_none()
+        subject_name = subject.name if subject else "General"
+        
+        messages = [
+            {"role": "system", "content": "You are a concise educational assistant. Provide brief, clear explanations."},
+            {"role": "user", "content": f"In the context of {subject_name}, explain this concept in 2-3 sentences: {node.label}"}
+        ]
+        
+        description = await llm_service.chat_completion(
+            messages=messages,
+            max_tokens=200,
+            temperature=0.3,
+            timeout=30
+        )
+        
+        # Cache in database
+        node.description = description.strip()
+        await db.commit()
+        await db.refresh(node)
+        
+        logger.info(f"Generated and cached description for node '{node.label}'")
+        
+        return {"node_id": node.id, "label": node.label, "description": node.description}
+        
+    except Exception as e:
+        logger.error(f"Failed to generate description for '{node.label}': {e}")
+        return {"node_id": node.id, "label": node.label, "description": f"A concept related to the study of this subject. Click 'Study' to learn more about {node.label}."}

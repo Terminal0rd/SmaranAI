@@ -91,6 +91,7 @@ export const mindmapAPI = {
     getWeakNodes: (subjectId: string) => api.get(`/api/mindmap/${subjectId}/weak-nodes`),
     updateNode: (nodeId: string, data: { x_position?: number; y_position?: number; mastery_level?: number }) =>
         api.put(`/api/mindmap/node/${nodeId}`, data),
+    describeNode: (nodeId: string) => api.get(`/api/mindmap/node/${nodeId}/describe`),
 };
 
 // Quiz API

@@ -4,6 +4,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
     Target,
@@ -12,7 +13,11 @@ import {
     BookOpen,
     Brain,
     Loader2,
-    ArrowUpRight
+    ArrowUpRight,
+    ClipboardList,
+    CheckCircle,
+    XCircle,
+    ChevronRight
 } from 'lucide-react';
 import {
     LineChart,
@@ -27,18 +32,24 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
-import { progressAPI } from '@/lib/api';
+import { progressAPI, quizAPI } from '@/lib/api';
 import { getScoreColor, formatDate } from '@/lib/utils';
 
 export default function ProgressPage() {
+    const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any>(null);
+    const [quizHistory, setQuizHistory] = useState<any[]>([]);
 
     useEffect(() => {
         const fetchProgress = async () => {
             try {
-                const response = await progressAPI.getDashboard();
-                setData(response.data);
+                const [progressRes, quizRes] = await Promise.all([
+                    progressAPI.getDashboard(),
+                    quizAPI.getHistory().catch(() => ({ data: [] })),
+                ]);
+                setData(progressRes.data);
+                setQuizHistory(quizRes.data || []);
             } catch (error) {
                 console.error('Failed to fetch progress:', error);
             } finally {
@@ -55,6 +66,12 @@ export default function ProgressPage() {
             </div>
         );
     }
+
+    const getScoreBg = (score: number) => {
+        if (score >= 80) return 'bg-green-500/10 border-green-500/20';
+        if (score >= 60) return 'bg-yellow-500/10 border-yellow-500/20';
+        return 'bg-red-500/10 border-red-500/20';
+    };
 
     const stats = [
         {
@@ -241,6 +258,71 @@ export default function ProgressPage() {
                             <div className="text-center py-12">
                                 <Brain className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                                 <p className="text-slate-400">Start learning to track progress</p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Quiz History */}
+                <Card className="mt-6">
+                    <CardHeader>
+                        <CardTitle className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <ClipboardList className="w-4 h-4 text-violet-400" />
+                                Quiz History
+                            </div>
+                            <Link href="/quiz/history">
+                                <button className="text-sm text-violet-400 hover:text-violet-300 flex items-center gap-1">
+                                    View All <ChevronRight className="w-3 h-3" />
+                                </button>
+                            </Link>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {quizHistory.length > 0 ? (
+                            <div className="space-y-2">
+                                {quizHistory.slice(0, 8).map((attempt: any, i: number) => (
+                                    <motion.div
+                                        key={attempt.id}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: i * 0.03 }}
+                                        onClick={() => router.push('/quiz/history')}
+                                        className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer group"
+                                    >
+                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                            {/* Score badge */}
+                                            <div className={`px-3 py-1.5 rounded-lg border flex-shrink-0 ${getScoreBg(attempt.score)}`}>
+                                                <span className={`text-sm font-bold ${getScoreColor(attempt.score)}`}>
+                                                    {attempt.score.toFixed(0)}%
+                                                </span>
+                                            </div>
+                                            {/* Info */}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm text-white font-medium truncate">
+                                                    {attempt.subject_name || 'Quiz'} — {attempt.total_questions} Qs
+                                                </p>
+                                                <div className="flex items-center gap-3 mt-0.5">
+                                                    <span className="text-xs text-green-400 flex items-center gap-1">
+                                                        <CheckCircle className="w-3 h-3" />{attempt.correct_answers}
+                                                    </span>
+                                                    <span className="text-xs text-red-400 flex items-center gap-1">
+                                                        <XCircle className="w-3 h-3" />{attempt.total_questions - attempt.correct_answers}
+                                                    </span>
+                                                    <span className="text-xs text-slate-500">
+                                                        {formatDate(attempt.completed_at)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 flex-shrink-0" />
+                                    </motion.div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8">
+                                <ClipboardList className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                                <p className="text-slate-400 text-sm">No quizzes taken yet</p>
                             </div>
                         )}
                     </CardContent>

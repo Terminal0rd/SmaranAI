@@ -1,5 +1,6 @@
 """
-LLM service for Qwen 2.5 (7B) - Optimized for GTX 1650 (4GB VRAM)
+LLM service - Supports Groq (cloud) and Ollama (local)
+Switchable via LLM_PROVIDER env var: "groq" or "ollama"
 """
 import httpx
 from typing import Optional, List, Dict, Any
@@ -13,46 +14,81 @@ logger = logging.getLogger(__name__)
 
 
 class LLMService:
-    """Service for interacting with Ollama (Qwen 2.5 7B) - GTX 1650 optimized"""
+    """
+    LLM service with dual backend support:
+    - Groq: Fast cloud API (llama-3.3-70b-versatile)
+    - Ollama: Local LLM (qwen2.5:7b-instruct)
+    
+    Switch via LLM_PROVIDER env var. RAG/embeddings stay local regardless.
+    """
     
     def __init__(self):
-        self.base_url = settings.llm_server_url.rstrip('/')
-        self.max_tokens = 500  # Balanced for 4GB VRAM GPU
-        self.context_window = 2048  # Limited for GPU memory
-        self.model_name = "qwen2.5:7b-instruct" # Added model_name attribute
+        self.provider = settings.llm_provider.lower()  # "groq" or "ollama"
+        
+        if self.provider == "groq":
+            self.base_url = "https://api.groq.com/openai"
+            self.api_key = settings.groq_api_key
+            self.model_name = settings.groq_model
+            self.default_max_tokens = 2048
+            self.context_window = 32768
+            logger.info(f"LLM Provider: Groq ({self.model_name})")
+        else:
+            self.base_url = settings.llm_server_url.rstrip('/')
+            self.api_key = None
+            self.model_name = settings.ollama_model
+            self.default_max_tokens = 500
+            self.context_window = 2048
+            logger.info(f"LLM Provider: Ollama ({self.model_name})")
     
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
         max_tokens: int = 1000,
         temperature: float = 0.7,
-        timeout: int = 180,
+        timeout: int = 60,
         bypass_default: bool = False
     ) -> str:
         """
-        Get chat completion from LLM
+        Get chat completion from LLM (Groq or Ollama)
         
         Args:
             messages: List of message dicts with 'role' and 'content'
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature (0-1)
-            timeout: Request timeout in seconds (default 180s)
+            timeout: Request timeout in seconds
         
         Returns:
             Response text from LLM
         """
         try:
-            # Configure granular timeout
-            timeout_config = httpx.Timeout(
-                timeout=float(timeout),
-                connect=60.0,
-                read=float(timeout),
-                write=60.0
-            )
+            # Build headers
+            headers = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            
+            # Groq is fast - shorter timeouts. Ollama needs longer.
+            if self.provider == "groq":
+                timeout_config = httpx.Timeout(
+                    timeout=min(float(timeout), 120.0),  # Groq rarely needs >60s
+                    connect=30.0,
+                    read=min(float(timeout), 120.0),
+                    write=30.0
+                )
+            else:
+                timeout_config = httpx.Timeout(
+                    timeout=float(timeout),
+                    connect=60.0,
+                    read=float(timeout),
+                    write=60.0
+                )
+            
+            # API endpoint
+            api_url = f"{self.base_url}/v1/chat/completions"
             
             async with httpx.AsyncClient(timeout=timeout_config) as client:
                 response = await client.post(
-                    f"{self.base_url}/v1/chat/completions",  # Ollama requires /v1/ prefix
+                    api_url,
+                    headers=headers,
                     json={
                         "model": self.model_name,
                         "messages": messages,
@@ -63,17 +99,18 @@ class LLMService:
                 )
                 
                 if response.status_code != 200:
-                    logger.error(f"LLM returned status {response.status_code}: {response.text}")
-                    raise Exception(f"LLM request failed with status {response.status_code}")
+                    error_text = response.text[:500]
+                    logger.error(f"LLM ({self.provider}) returned status {response.status_code}: {error_text}")
+                    raise Exception(f"LLM request failed with status {response.status_code}: {error_text}")
                 
                 result = response.json()
                 return result["choices"][0]["message"]["content"]
                 
         except httpx.ReadTimeout:
-            logger.error("LLM request timed out")
+            logger.error(f"LLM ({self.provider}) request timed out after {timeout}s")
             raise Exception("LLM request timed out. Please try again.")
         except Exception as e:
-            logger.error(f"LLM request failed: {e}")
+            logger.error(f"LLM ({self.provider}) request failed: {e}")
             raise Exception(f"LLM server error: {str(e)}")
     
     async def generate(
@@ -85,7 +122,7 @@ class LLMService:
     ) -> str:
         """Generate text from a single prompt (wrapper for chat_completion)"""
         messages = [{"role": "user", "content": prompt}]
-        return await self.chat_completion(messages, max_tokens, temperature, stop)
+        return await self.chat_completion(messages, max_tokens or self.default_max_tokens, temperature)
     
     async def generate_whiteboard_response(
         self,
@@ -106,9 +143,15 @@ class LLMService:
         
         system_prompt = "You are an AI tutor. Provide clear, concise educational responses with bullet points and examples."
 
-        # Limit context size for GPU memory
-        context_limited = (context[:500] + "...") if len(context) > 500 else context
-        summary_limited = (session_summary[:200] + "...") if len(session_summary) > 200 else session_summary
+        # Groq can handle more context, Ollama needs limits
+        if self.provider == "groq":
+            context_limited = (context[:2000] + "...") if len(context) > 2000 else context
+            summary_limited = (session_summary[:500] + "...") if len(session_summary) > 500 else session_summary
+            response_tokens = 2000
+        else:
+            context_limited = (context[:500] + "...") if len(context) > 500 else context
+            summary_limited = (session_summary[:200] + "...") if len(session_summary) > 200 else session_summary
+            response_tokens = 1000
         
         user_prompt = f"""CONTEXT: {context_limited if context_limited else "None"}
 
@@ -123,7 +166,7 @@ Provide a clear, educational response."""
             {"role": "user", "content": user_prompt}
         ]
         
-        response = await self.chat_completion(messages)
+        response = await self.chat_completion(messages, max_tokens=response_tokens)
         
         # Store in cache for future use
         response_cache.set(question, response, context)
@@ -137,7 +180,7 @@ Provide a clear, educational response."""
             {"role": "user", "content": f"Extract the key learning concepts from this educational content:\n\n{text}\n\nCONCEPTS:"}
         ]
         
-        response = await self.chat_completion(messages, max_tokens=50, temperature=0.2)
+        response = await self.chat_completion(messages, max_tokens=100, temperature=0.2)
         
         # Parse comma-separated concepts
         concepts = [c.strip() for c in response.split(",") if c.strip()]
@@ -231,11 +274,14 @@ JSON VALIDATION CHECKLIST:
 - correct_index is 0, 1, 2, or 3
 - No markdown formatting in any text field"""
         
+        # Groq can handle more content for better questions
+        content_limit = 4000 if self.provider == "groq" else 2000
+        
         # Enhanced user prompt
         user_prompt = f"""Generate {num_questions} quiz questions from this content.
 
 ---CONTENT---
-{content[:2000]}
+{content[:content_limit]}
 ---END---
 
 Generate {num_questions} questions as valid JSON (schema from system prompt).
@@ -250,8 +296,11 @@ Remember:
             {"role": "user", "content": user_prompt}
         ]
         
-        # 1200 tokens sufficient for 5 MCQs with options + explanations
-        return await self.chat_completion(messages, max_tokens=1200, temperature=0.3, timeout=300)
+        # Groq: more tokens, shorter timeout. Ollama: fewer tokens, longer timeout.
+        if self.provider == "groq":
+            return await self.chat_completion(messages, max_tokens=2000, temperature=0.3, timeout=60)
+        else:
+            return await self.chat_completion(messages, max_tokens=1200, temperature=0.3, timeout=300)
     
     async def generate_youtube_keywords(
         self,
@@ -264,7 +313,7 @@ Remember:
             {"role": "user", "content": f"Generate 5 YouTube search queries to find educational videos about:\nSubject: {subject}\nTopic: {topic}"}
         ]
         
-        response = await self.chat_completion(messages, max_tokens=50, temperature=0.3)
+        response = await self.chat_completion(messages, max_tokens=100, temperature=0.3)
         queries = [q.strip() for q in response.strip().split("\n") if q.strip()]
         return queries[:5]
     
@@ -280,19 +329,28 @@ Remember:
             {"role": "user", "content": f"CONVERSATION:\n{conversation}"}
         ]
         
-        return await self.chat_completion(chat_messages, max_tokens=100, temperature=0.2)
+        return await self.chat_completion(chat_messages, max_tokens=200, temperature=0.2)
     
     async def health_check(self) -> bool:
         """Check if LLM server is healthy"""
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                # Try the models endpoint first (OpenAI-compatible)
-                response = await client.get(f"{self.base_url}/v1/models")
-                if response.status_code == 200:
-                    return True
-                # Fallback to health endpoint
-                response = await client.get(f"{self.base_url}/health")
-                return response.status_code == 200
+            if self.provider == "groq":
+                headers = {"Authorization": f"Bearer {self.api_key}"}
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(
+                        f"{self.base_url}/v1/models",
+                        headers=headers
+                    )
+                    return response.status_code == 200
+            else:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    # Try the models endpoint first (OpenAI-compatible)
+                    response = await client.get(f"{self.base_url}/v1/models")
+                    if response.status_code == 200:
+                        return True
+                    # Fallback to health endpoint
+                    response = await client.get(f"{self.base_url}/health")
+                    return response.status_code == 200
         except Exception:
             return False
 
