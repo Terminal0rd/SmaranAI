@@ -24,9 +24,6 @@
 | Ayush Hande | https://github.com/Terminal0rd |
 | Suraj Raykar | https://github.com/ssuraj2504 |
 | Himanshu Kapure | https://github.com/Himanshu25kapure |
-| 📚 **RAG Knowledge Base** | Upload PDFs to enhance AI answers |
-| 📊 **Progress Analytics** | Charts, scores, and learning insights |
-| 📥 **Export PDF/PPT** | Download sessions as documents |
 
 ## 🛠️ Tech Stack
 
